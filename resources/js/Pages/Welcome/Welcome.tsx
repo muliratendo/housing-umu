@@ -1,7 +1,7 @@
 import { Link, Head } from '@inertiajs/react';
 import { useMediaQuery } from '@mantine/hooks';
 import { Button, Flex, Stack, Text, useMantineTheme } from '@mantine/core';
-import { IconApps, IconDashboard, IconClipboardText } from '@tabler/icons-react';
+import { IconApps, IconDashboard, IconClipboardText, IconUserCode } from '@tabler/icons-react';
 import classes from './welcome.module.css';
 import { PageProps } from '@/types';
 
@@ -20,7 +20,7 @@ export default function Welcome({ laravelVersion }: PageProps<{ laravelVersion: 
         <Stack>
           <Flex justify={'center'} align={'center'} gap={12} className={classes.logo}>
             <IconApps size={mobile_match ? 36 : 80} />
-            <Text fz={{ base: 28, sm: 60 }} fw={700}>
+            <Text fz={{ base: 20, sm: 32, md: 40, lg: 48 }} fw={500}>
               Housing@UMU | Laratine Admin Template
             </Text>
           </Flex>
@@ -45,7 +45,7 @@ export default function Welcome({ laravelVersion }: PageProps<{ laravelVersion: 
             </Button>
             <Button
               variant="subtle"
-              leftSection={<IconDashboard size={16} />}
+              leftSection={<IconUserCode size={16} />}
               component={Link}
               href="/dev-login"
             >
