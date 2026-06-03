@@ -11,7 +11,9 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\TagController;
 use App\Http\Controllers\UserController;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use App\Models\User;
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -23,14 +25,16 @@ Route::get('/', function () {
   ]);
 });
 
-Route::get('/dev-login', function() {
-    // if (!app()->environment('local')) {
-    //     abort(403, 'Unauthorized');
-    // }
+Route::get('/dev-login', function () {
+    // Only allow in non-production environments
+    if (! app()->environment('local', 'development')) {
+        abort(403, 'Unauthorized');
+    }
 
-    $user = \App\Models\User::where('email', 'admin@housing.umu.ac.ug')->first();
+    $user = User::where('email', 'admin@housing.umu.ac.ug')->first();
+
     if ($user) {
-        \Illuminate\Support\Facades\Auth::login($user);
+        Auth::login($user);
         return redirect()->to('/admin/dashboard');
     }
 
