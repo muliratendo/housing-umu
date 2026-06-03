@@ -1,0 +1,61 @@
+services:
+  - type: web
+    name: housing-umu
+    runtime: docker
+    plan: free
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_URL
+        fromService:
+          type: web
+          name: housing-umu
+          property: host
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: housing-umu-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: housing-umu-db
+          property: port
+      - key: DB_DATABASE
+        fromDatabase:
+          name: housing-umu-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: housing-umu-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: housing-umu-db
+          property: password
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: housing-umu-redis
+          property: connectionString
+      - key: CACHE_DRIVER
+        value: redis
+      - key: SESSION_DRIVER
+        value: redis
+      - key: QUEUE_CONNECTION
+        value: redis
+
+databases:
+  - name: housing-umu-db
+    plan: free
+    databaseName: housing_umu
+    user: housing_umu
+
+  - name: housing-umu-redis
+    type: redis
+    plan: free
+    ipAllowList: []
