@@ -13,7 +13,8 @@ RUN apk add --no-cache \
     libzip-dev \
     oniguruma-dev \
     postgresql-dev \
-    supervisor
+    supervisor \
+    autoconf g++ make
 
 # PHP extensions
 RUN docker-php-ext-install \
