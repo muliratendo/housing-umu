@@ -49,13 +49,14 @@ services:
       - key: QUEUE_CONNECTION
         value: redis
 
+  # Redis service
+  - type: redis
+    name: housing-umu-redis
+    plan: free
+    ipAllowList: []
+
 databases:
   - name: housing-umu-db
     plan: free
     databaseName: housing_umu
     user: housing_umu
-
-  - name: housing-umu-redis
-    type: redis
-    plan: free
-    ipAllowList: []
