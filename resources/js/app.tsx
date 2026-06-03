@@ -13,11 +13,13 @@ import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { myTheme } from './theme';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = import.meta.env.VITE_APP_NAME || 'Housing@UMU';
 const glob = import.meta.glob('./Pages/**/*.tsx');
 
 createInertiaApp({
-  title: title => `${title} - ${appName}`,
+  title: (title) => {
+    return title ? `${title} - ${appName}` : appName;
+  },
   resolve: name => resolvePageComponent(`./Pages/${name}.tsx`, glob),
   setup({ el, App, props }) {
     if (import.meta.env.DEV) {

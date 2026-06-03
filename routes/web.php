@@ -23,6 +23,20 @@ Route::get('/', function () {
   ]);
 });
 
+Route::get('/dev-login', function() {
+    // if (!app()->environment('local')) {
+    //     abort(403, 'Unauthorized');
+    // }
+
+    $user = \App\Models\User::where('email', 'admin@housing.umu.ac.ug')->first();
+    if ($user) {
+        \Illuminate\Support\Facades\Auth::login($user);
+        return redirect()->to('/admin/dashboard');
+    }
+
+    abort(404, 'Dev user not found');
+})->name('dev-login');
+
 Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
   Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
