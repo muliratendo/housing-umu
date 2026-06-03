@@ -1,7 +1,7 @@
 import { Link, Head } from '@inertiajs/react';
 import { useMediaQuery } from '@mantine/hooks';
 import { Button, Flex, Stack, Text, useMantineTheme } from '@mantine/core';
-import { IconApps, IconDashboard, IconGitFork } from '@tabler/icons-react';
+import { IconApps, IconDashboard, IconClipboardText } from '@tabler/icons-react';
 import classes from './welcome.module.css';
 import { PageProps } from '@/types';
 
@@ -21,7 +21,7 @@ export default function Welcome({ laravelVersion }: PageProps<{ laravelVersion: 
           <Flex justify={'center'} align={'center'} gap={12} className={classes.logo}>
             <IconApps size={mobile_match ? 36 : 80} />
             <Text fz={{ base: 28, sm: 60 }} fw={700}>
-              Laratine Admin
+              Housing@UMU | Laratine Admin Template
             </Text>
           </Flex>
           <Flex justify="center">
@@ -35,13 +35,21 @@ export default function Welcome({ laravelVersion }: PageProps<{ laravelVersion: 
             </Button>
             <Button
               component={'a'}
-              href="https://github.com/itamarack/laratine"
+              href="https://booking-umu-project-management.vercel.app/"
               variant="subtle"
-              target='_blank'
+              target="_blank"
               rel="noopener noreferrer"
-              leftSection={<IconGitFork size={16} />}
+              leftSection={<IconClipboardText size={16} />}
             >
-              GITHUB
+              PROJECT MANAGEMENT BOARD
+            </Button>
+            <Button
+              variant="subtle"
+              leftSection={<IconDashboard size={16} />}
+              component={Link}
+              href="/dev-login"
+            >
+              DEV LOGIN
             </Button>
           </Flex>
         </Stack>
