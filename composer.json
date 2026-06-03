@@ -6,11 +6,13 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "algolia/algoliasearch-client-php": "^4.44",
         "awssat/laravel-visits": "^6.1",
         "inertiajs/inertia-laravel": "^1.0",
         "laravel/breeze": "^2.0",
         "laravel/framework": "^11.9",
         "laravel/sanctum": "^4.0",
+        "laravel/scout": "^10.25",
         "laravel/tinker": "^2.9",
         "spatie/laravel-medialibrary": "^11.7",
         "spatie/laravel-permission": "^6.9",
