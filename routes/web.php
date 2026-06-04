@@ -41,6 +41,14 @@ Route::get('/dev-login', function () {
     abort(404, 'Dev user not found');
 })->name('dev-login');
 
+// delete afterwards
+Route::get('/debug-routes', fn () => \Illuminate\Support\Facades\Artisan::call('route:list'));
+
+// delete afterwards
+Route::get('/env-check', function () {
+    return app()->environment();
+});
+
 Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
   Route::get('/dashboard', DashboardController::class)->name('dashboard');
 

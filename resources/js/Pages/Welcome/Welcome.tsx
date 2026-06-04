@@ -20,7 +20,7 @@ export default function Welcome({ laravelVersion }: PageProps<{ laravelVersion: 
         <Stack>
           <Flex justify={'center'} align={'center'} gap={12} className={classes.logo}>
             <IconApps size={mobile_match ? 36 : 80} />
-            <Text fz={{ base: 20, sm: 32, md: 40, lg: 48 }} fw={500}>
+            <Text fz={{ base: 16, sm: 30.4, md: 40, lg: 48 }} fw={500}>
               Housing@UMU | Laratine Admin Template
             </Text>
           </Flex>
