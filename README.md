@@ -7,7 +7,9 @@ Housing@UMU is a web-based platform for managing end-to-end student accommodatio
   
 
 ***
-🗓️[Project Management Board](https://booking-umu-project-management.vercel.app/)
+<div align="center"> 
+🗓️[Project Management Board](https://booking-umu-project-management.vercel.app/)  &nbsp;&nbsp;&nbsp;&nbsp;🌐[Preview Housing@UMU](https://housing-umu.onrender.com/)
+<div>
 ***
 
 ### Remainder!!!
