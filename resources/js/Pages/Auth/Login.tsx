@@ -24,7 +24,7 @@ type LoginType = {
 
 function Login({ status, canResetPassword }: LoginType) {
   const form = useForm({
-    email: 'laratine@email.com',
+    email: 'user@housing.umu.ac.ug',
     password: 'password',
     remember: false,
   });
