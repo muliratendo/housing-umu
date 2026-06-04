@@ -359,6 +359,19 @@ This style supports incremental delivery from an empty repo, to a deployed skele
 
 ***
 
-  
+# How to Reset a git commit
+
+```bash
+#1. This permanently deletes all commits made after this hash
+git reset --hard <hash>
+
+# 2. Move the Git pointer back to the tip of your current branch (e.g., main) but leave your files matching the old state you have returned to
+git reset --soft origin/main
+
+# 3. Commit the changes
+git commit -m "Roll back repository state to commit <hash>"
+```
+
+***
 
 <div  align="center">⁂</div>
