@@ -11,9 +11,10 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\TagController;
 use App\Http\Controllers\UserController;
 use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Auth; //For Dev-login
 use Illuminate\Support\Facades\Route;
-use App\Models\User;
+use Illuminate\Support\Facades\Artisan; // For the debug route
+use App\Models\User; // For Dev-login
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -25,6 +26,7 @@ Route::get('/', function () {
   ]);
 });
 
+// Comment-out afterwards
 Route::get('/dev-login', function () {
     // Only allow in non-production environments
     if (! app()->environment('local', 'development')) {
@@ -42,11 +44,25 @@ Route::get('/dev-login', function () {
 })->name('dev-login');
 
 // delete afterwards
-Route::get('/debug-routes', fn () => \Illuminate\Support\Facades\Artisan::call('route:list'));
+Route::get('/debug-routes', function () {
+    Artisan::call('route:list', ['--path' => 'dev-login']); // optional filter in newer Laravel
+    return '<pre>' . Artisan::output() . '</pre>';
+});
 
 // delete afterwards
 Route::get('/env-check', function () {
     return app()->environment();
+});
+
+// comment out afterwards
+Route::get('/debug-optimize', function () {
+    Artisan::call('config:clear');
+    Artisan::call('cache:clear');
+    Artisan::call('route:clear');
+    Artisan::call('config:cache');
+    Artisan::call('route:cache');
+
+    return '<pre>' . Artisan::output() . '</pre>';
 });
 
 Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
