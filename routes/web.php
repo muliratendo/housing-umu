@@ -55,6 +55,14 @@ Route::get('/debug-users', function () {
 });
 
 // delete afterwards
+Route::get('/debug-seed-dev', function () {
+    // Will run DatabaseSeeder::run(), which calls DevelopmentUserSeeder
+    Artisan::call('db:seed', ['--force' => true]);
+
+    return '<pre>' . Artisan::output() . '</pre>';
+});
+
+// delete afterwards
 Route::get('/env-check', function () {
     return app()->environment();
 });
