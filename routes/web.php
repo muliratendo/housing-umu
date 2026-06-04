@@ -40,7 +40,7 @@ Route::get('/dev-login', function () {
         return redirect()->to('/admin/dashboard');
     }
 
-    abort(404, 'Dev user not found');
+    return 'DEV LOGIN ROUTE HIT, BUT USER NOT FOUND';
 })->name('dev-login');
 
 // delete afterwards
