@@ -13,6 +13,7 @@ Housing@UMU is a web-based platform for managing end-to-end student accommodatio
 ### Remainder!!!
 - Uncomment lines 27-29 in routes/web.php before deploying publicly.
 - Remove development seeder accounts
+- Remove all debug routes
 
 ## Project context
 
@@ -307,21 +308,17 @@ Inertia lets the frontend behave like a SPA while routing and controllers stay i
 
 - Application deployed as a Web Service on Render free tier for early development and demos.
 
-- Managed MySQL database (or PostgreSQL) on Render for persistent storage.
+- Managed PostgreSQL database on Render for persistent storage.
 
 - **CI/CD**:
 
-- GitHub repository with branch protection on `main`.
-
 - GitHub Actions pipeline to:
 
-- Run automated tests (PHPUnit, frontend tests/lint).
-
-- Optionally trigger deployment to Render on merges/tags.
+- Run some automated tests (PHPUnit, frontend tests/lint).
 
 - **Configuration \& secrets**:
 
-- Configuration managed via `.env` files in development and Render environment variables in production.
+- Configuration managed via `.env` files and Render environment variables.
 
 - Plan to evaluate tools like Infisical or Doppler if more advanced secret management is needed.
 
@@ -341,7 +338,7 @@ The project uses a simple Kanban workflow to keep work flowing and avoid overloa
 
 - **Columns**:
 
-- Backlog → Ready → In Progress → Review → Done
+- Todo → In Progress → Done
 
 - **WIP limits**:
 

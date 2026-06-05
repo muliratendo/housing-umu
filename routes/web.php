@@ -14,7 +14,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Auth; //For Dev-login
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan; // For the debug route
-use App\Models\User; // For Dev-login
+use App\Models\User; // For Dev-login and debug users
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -50,19 +50,21 @@ Route::get('/debug-routes', function () {
 });
 
 // delete afterwards
-Route::get('/env-check', function () {
-    return app()->environment();
+Route::get('/debug-users', function () {
+    return User::select('id', 'name', 'firstname', 'lastname', 'email')->get();
 });
 
-// comment out afterwards
-Route::get('/debug-optimize', function () {
-    Artisan::call('config:clear');
-    Artisan::call('cache:clear');
-    Artisan::call('route:clear');
-    Artisan::call('config:cache');
-    Artisan::call('route:cache');
+// delete afterwards
+Route::get('/debug-seed-dev', function () {
+    // Will run DatabaseSeeder::run(), which calls DevelopmentUserSeeder
+    Artisan::call('db:seed', ['--force' => true]);
 
     return '<pre>' . Artisan::output() . '</pre>';
+});
+
+// delete afterwards
+Route::get('/env-check', function () {
+    return app()->environment();
 });
 
 Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
