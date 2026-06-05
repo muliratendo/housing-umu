@@ -21,7 +21,7 @@ export default function Welcome({ laravelVersion }: PageProps<{ laravelVersion: 
           <Flex justify={'center'} align={'center'} gap={12} className={classes.logo}>
             <IconApps size={mobile_match ? 36 : 80} />
             <Text fz={{ base: 16, sm: 30.4, md: 40, lg: 48 }} fw={500}>
-              Housing@UMU | Laratine Admin Template
+              Housing@UMU | Laratine Admin Template v1
             </Text>
           </Flex>
           <Flex justify="center">
