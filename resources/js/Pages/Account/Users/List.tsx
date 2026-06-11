@@ -22,7 +22,8 @@ import { useDisclosure } from '@mantine/hooks';
 import { DataTable, DataTableProps, DataTableSortStatus } from 'mantine-datatable';
 import { IconDotsVertical, IconEdit, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
 import { PageHeader } from '@/Components';
-import { AuthenticatedLayout } from '@/Layouts';
+import { lazy, Suspense } from 'react';
+const AuthenticatedLayout = lazy(() => import('@/Layouts/AuthenticatedLayout'));
 import { PageProps, User } from '@/types';
 import { useSearchFilter } from '@/Hooks';
 import { dashboardRoute, userRoute } from '@/Routes';
@@ -156,50 +157,56 @@ export default function List({ auth, users }: UsersProps) {
   ];
 
   return (
-    <AuthenticatedLayout user={auth.user}>
-      <Head title="Users | Account" />
-      <Delete user={selected} isOpen={isOpen} onClose={onClose} />
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthenticatedLayout user={auth.user}>
+        <Head title="Users | Account" />
+        <Delete user={selected} isOpen={isOpen} onClose={onClose} />
 
-      <Container fluid>
-        <Stack gap="lg">
-          <PageHeader
-            user={auth.user}
-            title="Users"
-            breadcrumbItems={[
-              { title: 'Dashboard', href: dashboardRoute.dashboard },
-              { title: 'Users', href: userRoute.list },
-            ]}
-            withActions={
-              <Button component={Link} href={userRoute.create} leftSection={<IconPlus size={18} />}>
-                New User
-              </Button>
-            }
-          />
-          <Paper p="md" shadow="md" radius="md">
-            <DataTable
-              minHeight={200}
-              verticalSpacing="xs"
-              striped
-              highlightOnHover
-              columns={columns}
-              records={users.data}
-              selectedRecords={selectedRecords}
-              fetching={searchFilter.isFetching}
-              totalRecords={users.total}
-              recordsPerPage={users.per_page}
-              page={users.current_page}
-              recordsPerPageOptions={[5, 10, 20, 50]}
-              onSelectedRecordsChange={setSelectedRecords}
-              onPageChange={page => searchFilter.onPageChange(page)}
-              onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
-              sortStatus={searchFilter.sortStatus as DataTableSortStatus<User>}
-              onSortStatusChange={(sortStatus: DataTableSortStatus<User>) =>
-                searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+        <Container fluid>
+          <Stack gap="lg">
+            <PageHeader
+              user={auth.user}
+              title="Users"
+              breadcrumbItems={[
+                { title: 'Dashboard', href: dashboardRoute.dashboard },
+                { title: 'Users', href: userRoute.list },
+              ]}
+              withActions={
+                <Button
+                  component={Link}
+                  href={userRoute.create}
+                  leftSection={<IconPlus size={18} />}
+                >
+                  New User
+                </Button>
               }
             />
-          </Paper>
-        </Stack>
-      </Container>
-    </AuthenticatedLayout>
+            <Paper p="md" shadow="md" radius="md">
+              <DataTable
+                minHeight={200}
+                verticalSpacing="xs"
+                striped
+                highlightOnHover
+                columns={columns}
+                records={users.data}
+                selectedRecords={selectedRecords}
+                fetching={searchFilter.isFetching}
+                totalRecords={users.total}
+                recordsPerPage={users.per_page}
+                page={users.current_page}
+                recordsPerPageOptions={[5, 10, 20, 50]}
+                onSelectedRecordsChange={setSelectedRecords}
+                onPageChange={page => searchFilter.onPageChange(page)}
+                onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
+                sortStatus={searchFilter.sortStatus as DataTableSortStatus<User>}
+                onSortStatusChange={(sortStatus: DataTableSortStatus<User>) =>
+                  searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+                }
+              />
+            </Paper>
+          </Stack>
+        </Container>
+      </AuthenticatedLayout>
+    </Suspense>
   );
 }

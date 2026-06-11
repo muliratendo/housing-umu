@@ -43,29 +43,29 @@ Route::get('/dev-login', function () {
     return 'DEV LOGIN ROUTE HIT, BUT USER NOT FOUND';
 })->name('dev-login');
 
-// delete afterwards
-Route::get('/debug-routes', function () {
-    Artisan::call('route:list', ['--path' => 'dev-login']); // optional filter in newer Laravel
-    return '<pre>' . Artisan::output() . '</pre>';
-});
+// // delete afterwards
+// Route::get('/debug-routes', function () {
+//     Artisan::call('route:list', ['--path' => 'dev-login']); // optional filter in newer Laravel
+//     return '<pre>' . Artisan::output() . '</pre>';
+// });
 
-// delete afterwards
-Route::get('/debug-users', function () {
-    return User::select('id', 'name', 'firstname', 'lastname', 'email')->get();
-});
+// // delete afterwards
+// Route::get('/debug-users', function () {
+//     return User::select('id', 'name', 'firstname', 'lastname', 'email')->get();
+// });
 
-// delete afterwards
-Route::get('/debug-seed-dev', function () {
-    // Will run DatabaseSeeder::run(), which calls DevelopmentUserSeeder
-    Artisan::call('db:seed', ['--force' => true]);
+// // delete afterwards
+// Route::get('/debug-seed-dev', function () {
+//     // Will run DatabaseSeeder::run(), which calls DevelopmentUserSeeder
+//     Artisan::call('db:seed', ['--force' => true]);
 
-    return '<pre>' . Artisan::output() . '</pre>';
-});
+//     return '<pre>' . Artisan::output() . '</pre>';
+// });
 
-// delete afterwards
-Route::get('/env-check', function () {
-    return app()->environment();
-});
+// // delete afterwards
+// Route::get('/env-check', function () {
+//     return app()->environment();
+// });
 
 Route::middleware(['auth', 'verified'])->prefix('admin')->group(function () {
   Route::get('/dashboard', DashboardController::class)->name('dashboard');

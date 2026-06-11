@@ -24,7 +24,8 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import { notifications } from '@mantine/notifications';
 import { IconDeviceFloppy, IconPrinter, IconCheck, IconX } from '@tabler/icons-react';
 import { PageHeader, Surface } from '@/Components';
-import { AuthenticatedLayout } from '@/Layouts';
+import { lazy, Suspense } from 'react';
+const AuthenticatedLayout = lazy(() => import('@/Layouts/AuthenticatedLayout'));
 import { PageProps, Role, Permission } from '@/types';
 import { dashboardRoute, permissionsRoute } from '@/Routes';
 import { getSelectedPermissions } from '@/Utils';
@@ -101,138 +102,140 @@ export default function ManagePermissions({ auth, role, enable_all, permissionLi
   };
 
   return (
-    <AuthenticatedLayout user={auth.user}>
-      <Head title="Manage Permissions | Roles & Permissions" />
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthenticatedLayout user={auth.user}>
+        <Head title="Manage Permissions | Roles & Permissions" />
 
-      <Container fluid>
-        <form onSubmit={onSubmit}>
-          <Stack gap="lg">
-            <PageHeader
-              user={auth.user}
-              title="Manage Permissions"
-              breadcrumbItems={[
-                { title: 'Dashboard', href: dashboardRoute.dashboard },
-                { title: 'Role & Permissions', href: permissionsRoute.list },
-                { title: 'Manage Permissions', href: '#' },
-              ]}
-            />
-            <Grid gutter={{ base: 'lg', lg: 'xl' }}>
-              <Grid.Col span={{ base: 12, md: 8 }}>
-                <Surface component={Paper} p="md" shadow="md" radius="md" h="100%">
-                  <SimpleGrid cols={3} verticalSpacing={38}>
-                    {permissions.map(perm => (
-                      <Group key={perm.name} w="100%" gap={6}>
-                        <Switch
-                          size="sm"
-                          checked={perm.active}
-                          label={perm.name}
-                          onChange={event => {
-                            perm.active = event.currentTarget.checked;
-                            perm.permission = perm.permission.map(permission => {
-                              return { ...permission, active: perm.active };
-                            });
-                            setPermission(() => [...permissions]);
-                          }}
-                          thumbIcon={CheckboxThumbIcon(perm.active as boolean)}
-                        />
-                        <Fieldset w="100%" legend="Permissions">
-                          <SimpleGrid cols={2}>
-                            {perm.permission.map(item => (
-                              <Checkbox
-                                size="xs"
-                                key={item.name}
-                                label={item.name.split(' ')[0]}
-                                disabled={!perm.active}
-                                checked={item.active}
-                                onChange={e => {
-                                  const target = perm.permission.find(p => p.name === item.name);
-                                  if (target) target.active = e.currentTarget.checked;
-                                  setPermission(() => [...permissions]);
+        <Container fluid>
+          <form onSubmit={onSubmit}>
+            <Stack gap="lg">
+              <PageHeader
+                user={auth.user}
+                title="Manage Permissions"
+                breadcrumbItems={[
+                  { title: 'Dashboard', href: dashboardRoute.dashboard },
+                  { title: 'Role & Permissions', href: permissionsRoute.list },
+                  { title: 'Manage Permissions', href: '#' },
+                ]}
+              />
+              <Grid gutter={{ base: 'lg', lg: 'xl' }}>
+                <Grid.Col span={{ base: 12, md: 8 }}>
+                  <Surface component={Paper} p="md" shadow="md" radius="md" h="100%">
+                    <SimpleGrid cols={3} verticalSpacing={38}>
+                      {permissions.map(perm => (
+                        <Group key={perm.name} w="100%" gap={6}>
+                          <Switch
+                            size="sm"
+                            checked={perm.active}
+                            label={perm.name}
+                            onChange={event => {
+                              perm.active = event.currentTarget.checked;
+                              perm.permission = perm.permission.map(permission => {
+                                return { ...permission, active: perm.active };
+                              });
+                              setPermission(() => [...permissions]);
+                            }}
+                            thumbIcon={CheckboxThumbIcon(perm.active as boolean)}
+                          />
+                          <Fieldset w="100%" legend="Permissions">
+                            <SimpleGrid cols={2}>
+                              {perm.permission.map(item => (
+                                <Checkbox
+                                  size="xs"
+                                  key={item.name}
+                                  label={item.name.split(' ')[0]}
+                                  disabled={!perm.active}
+                                  checked={item.active}
+                                  onChange={e => {
+                                    const target = perm.permission.find(p => p.name === item.name);
+                                    if (target) target.active = e.currentTarget.checked;
+                                    setPermission(() => [...permissions]);
+                                  }}
+                                />
+                              ))}
+                            </SimpleGrid>
+                          </Fieldset>
+                        </Group>
+                      ))}
+                    </SimpleGrid>
+                  </Surface>
+                </Grid.Col>
+                <Grid.Col span={{ base: 12, md: 4 }} h="100%">
+                  <Surface component={Paper} p="md" shadow="md" radius="md" h="100%">
+                    <Stack justify="space-between" gap={16} h="100%">
+                      <Accordion variant="contained" defaultValue="publishing">
+                        <Accordion.Item value="publishing">
+                          <Accordion.Control
+                            icon={
+                              <IconPrinter
+                                style={{
+                                  color: 'var(--mantine-color-blue-6',
+                                  width: rem(20),
+                                  height: rem(20),
                                 }}
                               />
-                            ))}
-                          </SimpleGrid>
-                        </Fieldset>
-                      </Group>
-                    ))}
-                  </SimpleGrid>
-                </Surface>
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 4 }} h="100%">
-                <Surface component={Paper} p="md" shadow="md" radius="md" h="100%">
-                  <Stack justify="space-between" gap={16} h="100%">
-                    <Accordion variant="contained" defaultValue="publishing">
-                      <Accordion.Item value="publishing">
-                        <Accordion.Control
-                          icon={
-                            <IconPrinter
-                              style={{
-                                color: 'var(--mantine-color-blue-6',
-                                width: rem(20),
-                                height: rem(20),
-                              }}
-                            />
-                          }
-                        >
-                          Publishing
-                        </Accordion.Control>
-                        <Accordion.Panel>
-                          <Stack>
-                            <Switch
-                              size="sm"
-                              label="Enable all Permisions for this role"
-                              disabled={form.errors.enable_all as any}
-                              checked={form.data.enable_all}
-                              onChange={OnEnablePermissions}
-                              thumbIcon={CheckboxThumbIcon(form.data.enable_all)}
-                            />
-                            <TextInput
-                              withAsterisk
-                              label="Role Name"
-                              value={form.data.name}
-                              error={form.errors.name}
-                              disabled={form.processing}
-                              onChange={(a: any) => form.setData('name', a)}
-                            />
-                            <TextInput
-                              withAsterisk
-                              label="Guard Name"
-                              value={form.data.guard_name}
-                              error={form.errors.guard_name}
-                              disabled={form.processing}
-                              onChange={(a: any) => form.setData('guard_name', a)}
-                            />
-                            <Textarea
-                              label="Description"
-                              placeholder="Description"
-                              value={form.data.description}
-                              error={form.errors.description}
-                              disabled={form.processing}
-                              onChange={e => form.setData('description', e.target.value)}
-                            />
-
-                            <Flex justify="flex-end" mt={16}>
-                              <Button
+                            }
+                          >
+                            Publishing
+                          </Accordion.Control>
+                          <Accordion.Panel>
+                            <Stack>
+                              <Switch
                                 size="sm"
-                                type="submit"
+                                label="Enable all Permisions for this role"
+                                disabled={form.errors.enable_all as any}
+                                checked={form.data.enable_all}
+                                onChange={OnEnablePermissions}
+                                thumbIcon={CheckboxThumbIcon(form.data.enable_all)}
+                              />
+                              <TextInput
+                                withAsterisk
+                                label="Role Name"
+                                value={form.data.name}
+                                error={form.errors.name}
                                 disabled={form.processing}
-                                loading={form.processing}
-                                leftSection={<IconDeviceFloppy size={16} />}
-                              >
-                                Save Changes
-                              </Button>
-                            </Flex>
-                          </Stack>
-                        </Accordion.Panel>
-                      </Accordion.Item>
-                    </Accordion>
-                  </Stack>
-                </Surface>
-              </Grid.Col>
-            </Grid>
-          </Stack>
-        </form>
-      </Container>
-    </AuthenticatedLayout>
+                                onChange={(a: any) => form.setData('name', a)}
+                              />
+                              <TextInput
+                                withAsterisk
+                                label="Guard Name"
+                                value={form.data.guard_name}
+                                error={form.errors.guard_name}
+                                disabled={form.processing}
+                                onChange={(a: any) => form.setData('guard_name', a)}
+                              />
+                              <Textarea
+                                label="Description"
+                                placeholder="Description"
+                                value={form.data.description}
+                                error={form.errors.description}
+                                disabled={form.processing}
+                                onChange={e => form.setData('description', e.target.value)}
+                              />
+
+                              <Flex justify="flex-end" mt={16}>
+                                <Button
+                                  size="sm"
+                                  type="submit"
+                                  disabled={form.processing}
+                                  loading={form.processing}
+                                  leftSection={<IconDeviceFloppy size={16} />}
+                                >
+                                  Save Changes
+                                </Button>
+                              </Flex>
+                            </Stack>
+                          </Accordion.Panel>
+                        </Accordion.Item>
+                      </Accordion>
+                    </Stack>
+                  </Surface>
+                </Grid.Col>
+              </Grid>
+            </Stack>
+          </form>
+        </Container>
+      </AuthenticatedLayout>
+    </Suspense>
   );
 }

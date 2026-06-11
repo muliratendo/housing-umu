@@ -23,7 +23,8 @@ import { useDisclosure } from '@mantine/hooks';
 import { DataTable, DataTableProps, DataTableSortStatus } from 'mantine-datatable';
 import { IconDotsVertical, IconEdit, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
 import { PageHeader } from '@/Components';
-import { AuthenticatedLayout } from '@/Layouts';
+import { lazy, Suspense } from 'react';
+const AuthenticatedLayout = lazy(() => import('@/Layouts/AuthenticatedLayout'));
 import { PageProps, Comment } from '@/types';
 import { useSearchFilter } from '@/Hooks';
 import { commentRoute, dashboardRoute } from '@/Routes';
@@ -161,54 +162,56 @@ export default function List({ auth, comments }: CommentProps) {
   ];
 
   return (
-    <AuthenticatedLayout user={auth.user}>
-      <Head title="Comments | Publishing" />
-      <DeleteComment comment={selected} isOpen={isOpen} onClose={onClose} />
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthenticatedLayout user={auth.user}>
+        <Head title="Comments | Publishing" />
+        <DeleteComment comment={selected} isOpen={isOpen} onClose={onClose} />
 
-      <Container fluid>
-        <Stack gap="lg">
-          <PageHeader
-            user={auth.user}
-            title="Comments"
-            breadcrumbItems={[
-              { title: 'Dashboard', href: dashboardRoute.dashboard },
-              { title: 'Comments', href: commentRoute.list },
-            ]}
-            withActions={
-              <Button
-                component={Link}
-                href={commentRoute.create}
-                leftSection={<IconPlus size={18} />}
-              >
-                New Comment
-              </Button>
-            }
-          />
-          <Paper p="md" shadow="md" radius="md">
-            <DataTable
-              minHeight={200}
-              verticalSpacing="xs"
-              striped
-              highlightOnHover
-              columns={columns}
-              records={comments.data}
-              selectedRecords={selectedRecords}
-              fetching={searchFilter.isFetching}
-              totalRecords={comments.total}
-              recordsPerPage={comments.per_page}
-              page={comments.current_page}
-              recordsPerPageOptions={[5, 10, 20, 50]}
-              onSelectedRecordsChange={setSelectedRecords}
-              onPageChange={page => searchFilter.onPageChange(page)}
-              onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
-              sortStatus={searchFilter.sortStatus as DataTableSortStatus<Comment>}
-              onSortStatusChange={(sortStatus: DataTableSortStatus<Comment>) =>
-                searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+        <Container fluid>
+          <Stack gap="lg">
+            <PageHeader
+              user={auth.user}
+              title="Comments"
+              breadcrumbItems={[
+                { title: 'Dashboard', href: dashboardRoute.dashboard },
+                { title: 'Comments', href: commentRoute.list },
+              ]}
+              withActions={
+                <Button
+                  component={Link}
+                  href={commentRoute.create}
+                  leftSection={<IconPlus size={18} />}
+                >
+                  New Comment
+                </Button>
               }
             />
-          </Paper>
-        </Stack>
-      </Container>
-    </AuthenticatedLayout>
+            <Paper p="md" shadow="md" radius="md">
+              <DataTable
+                minHeight={200}
+                verticalSpacing="xs"
+                striped
+                highlightOnHover
+                columns={columns}
+                records={comments.data}
+                selectedRecords={selectedRecords}
+                fetching={searchFilter.isFetching}
+                totalRecords={comments.total}
+                recordsPerPage={comments.per_page}
+                page={comments.current_page}
+                recordsPerPageOptions={[5, 10, 20, 50]}
+                onSelectedRecordsChange={setSelectedRecords}
+                onPageChange={page => searchFilter.onPageChange(page)}
+                onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
+                sortStatus={searchFilter.sortStatus as DataTableSortStatus<Comment>}
+                onSortStatusChange={(sortStatus: DataTableSortStatus<Comment>) =>
+                  searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+                }
+              />
+            </Paper>
+          </Stack>
+        </Container>
+      </AuthenticatedLayout>
+    </Suspense>
   );
 }

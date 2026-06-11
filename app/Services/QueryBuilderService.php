@@ -35,7 +35,7 @@ class QueryBuilderService
     $allowedSorts = $options['allowedSorts'] ?? [];
     $conditions = $options['conditions'] ?? [];
     $eagerLoaders = $options['eagerLoaders'] ?? [];
-    $searchIds = $model::search($this->search)->keys();
+    $searchIds = $this->search ? $model::search($this->search)->keys() : collect();
 
     $queryBuilder = QueryBuilder::for($model::class)
       ->allowedSorts($allowedSorts)

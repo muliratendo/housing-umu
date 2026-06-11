@@ -1,7 +1,8 @@
 'use client';
 
 import React, { Suspense, useEffect, useState } from 'react';
-import Chart from 'react-apexcharts'
+import ApexCharts from 'react-apexcharts'
+const Chart = (ApexCharts as any).default ?? ApexCharts
 import { Box, Paper, PaperProps, useMantineColorScheme, useMantineTheme } from '@mantine/core';
 import { Surface } from '@/Components';
 import { Category } from '@/types';

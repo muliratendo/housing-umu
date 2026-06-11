@@ -20,7 +20,8 @@ import { DataTable, DataTableProps, DataTableSortStatus } from 'mantine-datatabl
 import { IconDotsVertical, IconEdit, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
 import { CreateCategory, DeleteCategory, EditCategory } from '@/Pages/Category';
 import { PageHeader } from '@/Components';
-import { AuthenticatedLayout } from '@/Layouts';
+import { lazy, Suspense } from 'react';
+const AuthenticatedLayout = lazy(() => import('@/Layouts/AuthenticatedLayout'));
 import { Category, PageProps } from '@/types';
 import { dashboardRoute, categoryRoute } from '@/Routes';
 import { useSearchFilter } from '@/Hooks';
@@ -133,64 +134,66 @@ export default function List({ auth, categories }: CategoryProps) {
   ];
 
   return (
-    <AuthenticatedLayout user={auth.user}>
-      <Head title="Categories | Publishing" />
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthenticatedLayout user={auth.user}>
+        <Head title="Categories | Publishing" />
 
-      <CreateCategory
-        categories={categories.data}
-        isOpen={isOpenCreate}
-        onClose={onCloseCreate}
-        onSearch={s => searchFilter.onSearch(s.toString())}
-      />
-      <EditCategory
-        categories={categories.data}
-        category={selected}
-        isOpen={isOpenEdit}
-        onClose={onCloseEdit}
-        onSearch={s => searchFilter.onSearch(s.toString())}
-      />
-      <DeleteCategory category={selected} isOpen={isOpenDelete} onClose={onCloseDelete} />
+        <CreateCategory
+          categories={categories.data}
+          isOpen={isOpenCreate}
+          onClose={onCloseCreate}
+          onSearch={s => searchFilter.onSearch(s.toString())}
+        />
+        <EditCategory
+          categories={categories.data}
+          category={selected}
+          isOpen={isOpenEdit}
+          onClose={onCloseEdit}
+          onSearch={s => searchFilter.onSearch(s.toString())}
+        />
+        <DeleteCategory category={selected} isOpen={isOpenDelete} onClose={onCloseDelete} />
 
-      <Container fluid>
-        <Stack gap="lg">
-          <PageHeader
-            user={auth.user}
-            title="Categories"
-            breadcrumbItems={[
-              { title: 'Dashboard', href: dashboardRoute.dashboard },
-              { title: 'Categories', href: '#' },
-            ]}
-            withActions={
-              <Button leftSection={<IconPlus size={18} />} onClick={onOpenCreate}>
-                New Category
-              </Button>
-            }
-          />
-          <Paper p="md" shadow="md" radius="md">
-            <DataTable
-              minHeight={200}
-              verticalSpacing="xs"
-              striped
-              highlightOnHover
-              columns={columns}
-              records={categories.data}
-              selectedRecords={selectedRecords}
-              fetching={searchFilter.isFetching}
-              totalRecords={categories.total}
-              recordsPerPage={categories.per_page}
-              page={categories.current_page}
-              recordsPerPageOptions={[5, 10, 20, 50]}
-              onSelectedRecordsChange={setSelectedRecords}
-              onPageChange={page => searchFilter.onPageChange(page)}
-              onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
-              sortStatus={searchFilter.sortStatus as DataTableSortStatus<Category>}
-              onSortStatusChange={(sortStatus: DataTableSortStatus<Category>) =>
-                searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+        <Container fluid>
+          <Stack gap="lg">
+            <PageHeader
+              user={auth.user}
+              title="Categories"
+              breadcrumbItems={[
+                { title: 'Dashboard', href: dashboardRoute.dashboard },
+                { title: 'Categories', href: '#' },
+              ]}
+              withActions={
+                <Button leftSection={<IconPlus size={18} />} onClick={onOpenCreate}>
+                  New Category
+                </Button>
               }
             />
-          </Paper>
-        </Stack>
-      </Container>
-    </AuthenticatedLayout>
+            <Paper p="md" shadow="md" radius="md">
+              <DataTable
+                minHeight={200}
+                verticalSpacing="xs"
+                striped
+                highlightOnHover
+                columns={columns}
+                records={categories.data}
+                selectedRecords={selectedRecords}
+                fetching={searchFilter.isFetching}
+                totalRecords={categories.total}
+                recordsPerPage={categories.per_page}
+                page={categories.current_page}
+                recordsPerPageOptions={[5, 10, 20, 50]}
+                onSelectedRecordsChange={setSelectedRecords}
+                onPageChange={page => searchFilter.onPageChange(page)}
+                onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
+                sortStatus={searchFilter.sortStatus as DataTableSortStatus<Category>}
+                onSortStatusChange={(sortStatus: DataTableSortStatus<Category>) =>
+                  searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+                }
+              />
+            </Paper>
+          </Stack>
+        </Container>
+      </AuthenticatedLayout>
+    </Suspense>
   );
 }

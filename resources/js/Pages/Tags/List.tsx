@@ -10,7 +10,8 @@ import { DataTable, DataTableProps, DataTableSortStatus } from 'mantine-datatabl
 import { IconDotsVertical, IconEdit, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
 import { CreateTag, DeleteTag, EditTag } from '@/Pages/Tags';
 import { PageHeader } from '@/Components';
-import { AuthenticatedLayout } from '@/Layouts';
+import { lazy, Suspense } from 'react';
+const AuthenticatedLayout = lazy(() => import('@/Layouts/AuthenticatedLayout'));
 import { Category, PageProps } from '@/types';
 import { dashboardRoute } from '@/Routes';
 import { useSearchFilter } from '@/Hooks';
@@ -123,53 +124,55 @@ export default function List({ auth, tags }: CategoryProps) {
   ];
 
   return (
-    <AuthenticatedLayout user={auth.user}>
-      <Head title="Tags | Publishing" />
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthenticatedLayout user={auth.user}>
+        <Head title="Tags | Publishing" />
 
-      <CreateTag isOpen={isOpenCreate} onClose={onCloseCreate} />
-      <EditTag tag={selected} isOpen={isOpenEdit} onClose={onCloseEdit} />
-      <DeleteTag tag={selected} isOpen={isOpenDelete} onClose={onCloseDelete} />
+        <CreateTag isOpen={isOpenCreate} onClose={onCloseCreate} />
+        <EditTag tag={selected} isOpen={isOpenEdit} onClose={onCloseEdit} />
+        <DeleteTag tag={selected} isOpen={isOpenDelete} onClose={onCloseDelete} />
 
-      <Container fluid>
-        <Stack gap="lg">
-          <PageHeader
-            user={auth.user}
-            title="Tags"
-            breadcrumbItems={[
-              { title: 'Dashboard', href: dashboardRoute.dashboard },
-              { title: 'Tags', href: '#' },
-            ]}
-            withActions={
-              <Button leftSection={<IconPlus size={18} />} onClick={onOpenCreate}>
-                New Tag
-              </Button>
-            }
-          />
-          <Paper p="md" shadow="md" radius="md">
-            <DataTable
-              minHeight={200}
-              verticalSpacing="xs"
-              striped
-              highlightOnHover
-              columns={columns}
-              records={tags.data}
-              selectedRecords={selectedRecords}
-              fetching={searchFilter.isFetching}
-              totalRecords={tags.total}
-              recordsPerPage={tags.per_page}
-              page={tags.current_page}
-              recordsPerPageOptions={[5, 10, 20, 50]}
-              onSelectedRecordsChange={setSelectedRecords}
-              onPageChange={page => searchFilter.onPageChange(page)}
-              onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
-              sortStatus={searchFilter.sortStatus as DataTableSortStatus<Category>}
-              onSortStatusChange={(sortStatus: DataTableSortStatus<Category>) =>
-                searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+        <Container fluid>
+          <Stack gap="lg">
+            <PageHeader
+              user={auth.user}
+              title="Tags"
+              breadcrumbItems={[
+                { title: 'Dashboard', href: dashboardRoute.dashboard },
+                { title: 'Tags', href: '#' },
+              ]}
+              withActions={
+                <Button leftSection={<IconPlus size={18} />} onClick={onOpenCreate}>
+                  New Tag
+                </Button>
               }
             />
-          </Paper>
-        </Stack>
-      </Container>
-    </AuthenticatedLayout>
+            <Paper p="md" shadow="md" radius="md">
+              <DataTable
+                minHeight={200}
+                verticalSpacing="xs"
+                striped
+                highlightOnHover
+                columns={columns}
+                records={tags.data}
+                selectedRecords={selectedRecords}
+                fetching={searchFilter.isFetching}
+                totalRecords={tags.total}
+                recordsPerPage={tags.per_page}
+                page={tags.current_page}
+                recordsPerPageOptions={[5, 10, 20, 50]}
+                onSelectedRecordsChange={setSelectedRecords}
+                onPageChange={page => searchFilter.onPageChange(page)}
+                onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
+                sortStatus={searchFilter.sortStatus as DataTableSortStatus<Category>}
+                onSortStatusChange={(sortStatus: DataTableSortStatus<Category>) =>
+                  searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+                }
+              />
+            </Paper>
+          </Stack>
+        </Container>
+      </AuthenticatedLayout>
+    </Suspense>
   );
 }

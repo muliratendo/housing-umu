@@ -42,7 +42,15 @@ class ProfileRequest extends FormRequest
       'firstname' => ['required', 'string', 'max:255'],
       'lastname' => ['required', 'string', 'max:255'],
       'avatar' => ['nullable', new ImageRule(), 'max:2048'],
-      'email' => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique(User::class)->ignore($this->user()->id)],
+      'email' => [
+        'required',
+        'string',
+        'lowercase',
+        'safe_email',
+        'max:255',
+        Rule::unique(User::class)
+          ->ignore($this->user()->id)
+      ],
       'address' => ['required', 'string', 'max:255'],
       'city' => ['required', 'string', 'max:255'],
       'state' => ['required', 'string', 'max:255'],

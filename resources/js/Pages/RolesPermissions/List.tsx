@@ -31,7 +31,8 @@ import {
   EditRolePermission,
 } from '@/Pages/RolesPermissions';
 import { PageHeader } from '@/Components';
-import { AuthenticatedLayout } from '@/Layouts';
+import { lazy, Suspense } from 'react';
+const AuthenticatedLayout = lazy(() => import('@/Layouts/AuthenticatedLayout'));
 import { PageProps, Role } from '@/types';
 import { dashboardRoute, permissionsRoute } from '@/Routes';
 import { useSearchFilter } from '@/Hooks';
@@ -145,53 +146,55 @@ export default function List({ auth, roles }: RolesProps) {
   ];
 
   return (
-    <AuthenticatedLayout user={auth.user}>
-      <Head title="Roles & Permissions | Publishing" />
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthenticatedLayout user={auth.user}>
+        <Head title="Roles & Permissions | Publishing" />
 
-      <CreateRolePermission isOpen={isOpenCreate} onClose={onCloseCreate} />
-      <EditRolePermission role={selected} isOpen={isOpenEdit} onClose={onCloseEdit} />
-      <DeleteRolePermission role={selected} isOpen={isOpenDelete} onClose={onCloseDelete} />
+        <CreateRolePermission isOpen={isOpenCreate} onClose={onCloseCreate} />
+        <EditRolePermission role={selected} isOpen={isOpenEdit} onClose={onCloseEdit} />
+        <DeleteRolePermission role={selected} isOpen={isOpenDelete} onClose={onCloseDelete} />
 
-      <Container fluid>
-        <Stack gap="lg">
-          <PageHeader
-            user={auth.user}
-            title="Roles & Permissions"
-            breadcrumbItems={[
-              { title: 'Dashboard', href: dashboardRoute.dashboard },
-              { title: 'Roles & Permissions ', href: permissionsRoute.list },
-            ]}
-            withActions={
-              <Button leftSection={<IconPlus size={18} />} onClick={onOpenCreate}>
-                New Role
-              </Button>
-            }
-          />
-          <Paper p="md" shadow="md" radius="md">
-            <DataTable
-              minHeight={200}
-              verticalSpacing="xs"
-              striped
-              highlightOnHover
-              columns={columns}
-              records={roles.data}
-              selectedRecords={selectedRecords}
-              fetching={searchFilter.isFetching}
-              totalRecords={roles.total}
-              recordsPerPage={roles.per_page}
-              page={roles.current_page}
-              recordsPerPageOptions={[5, 10, 20, 50]}
-              onSelectedRecordsChange={setSelectedRecords}
-              onPageChange={page => searchFilter.onPageChange(page)}
-              onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
-              sortStatus={searchFilter.sortStatus as DataTableSortStatus<Role>}
-              onSortStatusChange={(sortStatus: DataTableSortStatus<Role>) =>
-                searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+        <Container fluid>
+          <Stack gap="lg">
+            <PageHeader
+              user={auth.user}
+              title="Roles & Permissions"
+              breadcrumbItems={[
+                { title: 'Dashboard', href: dashboardRoute.dashboard },
+                { title: 'Roles & Permissions ', href: permissionsRoute.list },
+              ]}
+              withActions={
+                <Button leftSection={<IconPlus size={18} />} onClick={onOpenCreate}>
+                  New Role
+                </Button>
               }
             />
-          </Paper>
-        </Stack>
-      </Container>
-    </AuthenticatedLayout>
+            <Paper p="md" shadow="md" radius="md">
+              <DataTable
+                minHeight={200}
+                verticalSpacing="xs"
+                striped
+                highlightOnHover
+                columns={columns}
+                records={roles.data}
+                selectedRecords={selectedRecords}
+                fetching={searchFilter.isFetching}
+                totalRecords={roles.total}
+                recordsPerPage={roles.per_page}
+                page={roles.current_page}
+                recordsPerPageOptions={[5, 10, 20, 50]}
+                onSelectedRecordsChange={setSelectedRecords}
+                onPageChange={page => searchFilter.onPageChange(page)}
+                onRecordsPerPageChange={perPage => searchFilter.onRecordsPerPage(perPage)}
+                sortStatus={searchFilter.sortStatus as DataTableSortStatus<Role>}
+                onSortStatusChange={(sortStatus: DataTableSortStatus<Role>) =>
+                  searchFilter.onSortStatus(sortStatus as DataTableSortStatus<any>)
+                }
+              />
+            </Paper>
+          </Stack>
+        </Container>
+      </AuthenticatedLayout>
+    </Suspense>
   );
 }

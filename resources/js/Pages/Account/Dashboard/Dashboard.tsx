@@ -11,7 +11,8 @@ import {
   RecentComments,
 } from '@/Components';
 import { Category, Comment, PageProps, Post, Stat } from '@/types';
-import { AuthenticatedLayout } from '@/Layouts';
+import { lazy, Suspense } from 'react';
+const AuthenticatedLayout = lazy(() => import('@/Layouts/AuthenticatedLayout'));
 import classes from './dashboard.module.css';
 
 type DashboardProps = {
@@ -49,72 +50,74 @@ export default function Dashboard({
   }, [stats.visitors]);
 
   return (
-    <AuthenticatedLayout user={auth.user} header={'Dashboard'}>
-      <Head title="Dashboard | Laratine" />
+    <Suspense fallback={<div>Loading...</div>}>
+      <AuthenticatedLayout user={auth.user} header={'Dashboard'}>
+        <Head title="Dashboard | Laratine" />
 
-      <Container fluid>
-        <Stack gap="lg">
-          <PageHeader user={auth.user} title="Welcome!" hasGreetings={true} />
-          <Box className={classes.root}>
-            {loading ? (
-              <SimpleGrid
-                cols={{ base: 1, sm: 2, lg: 4 }}
-                spacing={{ base: 10, sm: 'xl' }}
-                verticalSpacing={{ base: 'md', sm: 'xl' }}
-              >
-                {Array.from({ length: 4 }).map((o, i) => (
-                  <Skeleton key={`stats-loading-${i}`} visible={true} height={200} />
-                ))}
-              </SimpleGrid>
-            ) : (
-              <SimpleGrid
-                cols={{ base: 1, sm: 2, lg: 4 }}
-                spacing={{ base: 10, sm: 'xl' }}
-                verticalSpacing={{ base: 'md', sm: 'xl' }}
-              >
-                <StatsCard
-                  title="Total Users"
-                  icon={IconUsersGroup}
-                  value={stats.user?.value}
-                  difference={stats.user.difference}
-                />
-                <StatsCard
-                  title="Total Posts"
-                  icon={IconArticle}
-                  value={stats.post?.value}
-                  difference={stats.post.difference}
-                />
-                <StatsCard
-                  title="Total Comments"
-                  icon={IconMessage}
-                  value={stats.comments?.value}
-                  difference={stats.comments.difference}
-                />
-                <StatsCard
-                  title="Likes"
-                  icon={IconEyeSearch}
-                  value={stats.likes?.value}
-                  difference={stats.likes.difference}
-                />
-              </SimpleGrid>
-            )}
-          </Box>
-          <Grid gutter={{ base: 'md', sm: 'md', md: 'xl' }}>
-            <Grid.Col span={{ base: 12, md: 8 }}>
-              <AreaChart title="Visitors" series={series} categories={categories} />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 4 }}>
-              <ContentChart categories={category_count} />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 5 }}>
-              <RecentComments comments={recent_comments} loading={loading} />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, md: 7 }}>
-              <RecentPosts posts={recent_posts} loading={loading} />
-            </Grid.Col>
-          </Grid>
-        </Stack>
-      </Container>
-    </AuthenticatedLayout>
+        <Container fluid>
+          <Stack gap="lg">
+            <PageHeader user={auth.user} title="Welcome!" hasGreetings={true} />
+            <Box className={classes.root}>
+              {loading ? (
+                <SimpleGrid
+                  cols={{ base: 1, sm: 2, lg: 4 }}
+                  spacing={{ base: 10, sm: 'xl' }}
+                  verticalSpacing={{ base: 'md', sm: 'xl' }}
+                >
+                  {Array.from({ length: 4 }).map((o, i) => (
+                    <Skeleton key={`stats-loading-${i}`} visible={true} height={200} />
+                  ))}
+                </SimpleGrid>
+              ) : (
+                <SimpleGrid
+                  cols={{ base: 1, sm: 2, lg: 4 }}
+                  spacing={{ base: 10, sm: 'xl' }}
+                  verticalSpacing={{ base: 'md', sm: 'xl' }}
+                >
+                  <StatsCard
+                    title="Total Users"
+                    icon={IconUsersGroup}
+                    value={stats.user?.value}
+                    difference={stats.user.difference}
+                  />
+                  <StatsCard
+                    title="Total Posts"
+                    icon={IconArticle}
+                    value={stats.post?.value}
+                    difference={stats.post.difference}
+                  />
+                  <StatsCard
+                    title="Total Comments"
+                    icon={IconMessage}
+                    value={stats.comments?.value}
+                    difference={stats.comments.difference}
+                  />
+                  <StatsCard
+                    title="Likes"
+                    icon={IconEyeSearch}
+                    value={stats.likes?.value}
+                    difference={stats.likes.difference}
+                  />
+                </SimpleGrid>
+              )}
+            </Box>
+            <Grid gutter={{ base: 'md', sm: 'md', md: 'xl' }}>
+              <Grid.Col span={{ base: 12, md: 8 }}>
+                <AreaChart title="Visitors" series={series} categories={categories} />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <ContentChart categories={category_count} />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 5 }}>
+                <RecentComments comments={recent_comments} loading={loading} />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 7 }}>
+                <RecentPosts posts={recent_posts} loading={loading} />
+              </Grid.Col>
+            </Grid>
+          </Stack>
+        </Container>
+      </AuthenticatedLayout>
+    </Suspense>
   );
 }

@@ -2,7 +2,8 @@
 
 import { Paper, PaperProps, useMantineColorScheme, useMantineTheme } from '@mantine/core';
 import React, { Suspense } from 'react';
-import Chart from 'react-apexcharts'
+import ApexCharts from 'react-apexcharts'
+const Chart = (ApexCharts as any).default ?? ApexCharts
 import { Surface } from '@/Components';
 
 type ChartProps = {
