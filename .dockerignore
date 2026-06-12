@@ -1,7 +1,0 @@
-node_modules
-vendor
-.env
-.git
-.sail
-docker-compose.yml
-storage/logs/*
