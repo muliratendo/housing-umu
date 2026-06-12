@@ -1,7 +1,7 @@
 import { Center, Flex, Box, BackgroundImage, Card } from '@mantine/core';
 import { PropsWithChildren } from 'react';
 import { Logo } from '@/Components';
-import LoginIllustration from '~/assets/svgs/login-illustration.svg';
+import LoginIllustration from '@/../assets/svgs/login-illustration.svg';
 
 function AuthLayout({ children }: PropsWithChildren) {
   return (
