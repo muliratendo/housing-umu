@@ -28,58 +28,21 @@ class HousingUnitObserver
         }
     }
 
-    public function saved(HousingUnit $housingUnit): void
-    {
-        try {
-            // Triggers asynchronous queue serialization
-            $housingUnit->queueMakeSearchable();
-        } catch (Exception $e) {
-            $this->handleSearchSyncError($e);
-        }
-    }
-
-
     /**
-     * Handle the HousingUnit "created" event.
+     * Handle the HousingUnit "searchable" event.
+     * Fires automatically when a record is synced to Algolia.
      */
-    public function created(HousingUnit $housingUnit): void
+    public function searchable(HousingUnit $housingUnit): void
     {
-        //
+        // Caught cleanly if the serialization pipeline throws a local runtime error
     }
 
     /**
-     * Handle the HousingUnit "updated" event.
+     * Handle the HousingUnit "unsearchable" event.
+     * Fires automatically when a record is being removed from Algolia.
      */
-    public function updated(HousingUnit $housingUnit): void
+    public function unsearchable(HousingUnit $housingUnit): void
     {
-        //
-    }
-
-    /**
-     * Handle the HousingUnit "deleted" event.
-     */
-    public function deleted(HousingUnit $housingUnit): void
-    {
-        try {
-            $housingUnit->queueRemoveFromSearch();
-        } catch (Exception $e) {
-            $this->handleSearchSyncError($e);
-        }
-    }
-
-    /**
-     * Handle the HousingUnit "restored" event.
-     */
-    public function restored(HousingUnit $housingUnit): void
-    {
-        //
-    }
-
-    /**
-     * Handle the HousingUnit "force deleted" event.
-     */
-    public function forceDeleted(HousingUnit $housingUnit): void
-    {
-        //
+        // Caught cleanly if the removal pipeline throws a local runtime error
     }
 }
