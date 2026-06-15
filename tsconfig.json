@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "target": "esnext",
+        "module": "esnext",
+        "moduleResolution": "node",
+        "jsx": "react-jsx",
+        "strict": true,
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        "lib": ["dom", "dom.iterable", "esnext"],
+        "skipLibCheck": true,
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["resources/js/*"]
+        }
+    },
+    "include": ["resources/js/**/*", "resources/js/**/*.tsx", "resources/js/**/*.ts"]
+}

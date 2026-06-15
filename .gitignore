@@ -1,0 +1,42 @@
+*.log
+.phpactor.json
+/.codex
+/.cursor/
+/.nova
+/.phpunit.cache
+/.zed
+/public/fonts-manifest.dev.json
+_ide_helper.php
+
+# Dependencies
+/node_modules
+/vendor
+
+# Environment & Sensitive Keys
+.env
+.env.backup
+.env.production
+*.key
+/auth.json
+
+# Laravel System & Sail
+/storage/*.key
+/storage/pail
+/public/storage
+/public/hot
+/public/build
+.phpunit.result.cache
+.vagrant
+Homestead.json
+Homestead.yaml
+
+# OS & IDE Clutter
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
