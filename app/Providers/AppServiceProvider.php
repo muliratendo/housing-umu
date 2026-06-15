@@ -6,7 +6,7 @@ use App\Models\HousingUnit;
 use App\Observers\HousingUnitObserver;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
-
+use Illuminate\Support\Facades\URL; // 👈 1. Import the URL facade
 class AppServiceProvider extends ServiceProvider
 {
     /**
@@ -22,6 +22,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Force secure HTTPS asset generation whenever running behind Render's secure load balancers
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+            URL::forceScheme('https');
+        }
         Vite::prefetch(concurrency: 3);
     }
 }

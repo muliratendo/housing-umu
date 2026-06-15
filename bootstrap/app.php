@@ -16,7 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
-
+        $middleware->trustProxies(at: '*'); // 👈 Tells Laravel to trust Render's HTTPS headers
+        
         //
     })
     ->withExceptions(function (Exceptions $exceptions): void {
