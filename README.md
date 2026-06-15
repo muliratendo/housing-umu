@@ -27,6 +27,7 @@ Booking@UMU aims to:
 
 - Give **students** a self-service portal to apply for accommodation, see hostel options, and track allocation status.
 - Give **wardens, affiliated admins, the Dean and central staff** a controlled, auditable way to manage capacity, apply policies, and generate reports.
+- Provide **fast, intuitive search** across students, hostels, rooms, and allocations using Laravel Scout and Algolia.
 
 ## Core features (MVP)
 
@@ -46,6 +47,10 @@ Booking@UMU aims to:
     - Gender compatibility (hostel/room policy vs student gender).
     - First-year priority and dean permission rules.
     - Retention for first-year campus allocations across both semesters of an academic year.
+- Search & discovery (via Scout + Algolia):
+  - Full-text search across students, hostels, rooms, and allocations for admins.
+  - Quick search for hostels and rooms in student-facing flows (e.g., selecting preferences).
+  - Algolia-backed indices for fast, typo-tolerant search and filtering.
 - Reporting & dashboards:
   - Capacity utilization per hostel and semester.
   - Counts of allocated vs vacant vs waitlisted students.
@@ -53,7 +58,7 @@ Booking@UMU aims to:
 
 ## High-level architecture
 
-Booking@UMU is a monolithic web application built with Laravel on the backend and React via Inertia on the frontend, using a relational database and Redis for caching.
+Booking@UMU is a monolithic web application built with Laravel on the backend and React via Inertia on the frontend, using a relational database, Redis for caching, and Laravel Scout + Algolia for search.
 
 ### Frontend
 
@@ -68,6 +73,7 @@ Booking@UMU is a monolithic web application built with Laravel on the backend an
     - Admins/wardens/affiliated admins/dean (dashboards, hostel management, allocations).
   - Use Inertia to render server-driven pages with SPA-like navigation.
   - Use Tailwind + shadcn/ui for a consistent, minimal, accessible UI (cards, tables, forms, dialogs).
+  - Integrate Algolia-powered search widgets or custom search UIs that call backend endpoints using Scout queries.
 
 ### Backend
 
@@ -84,6 +90,9 @@ Booking@UMU is a monolithic web application built with Laravel on the backend an
     - `student`, `warden`, `affiliated_admin`, `dean`, `super_admin` roles (e.g., via Spatie Permission).
   - Expose metrics and lists for dashboards:
     - Hostels, rooms, beds, allocations, waitlists, maintenance records (future), student details.
+  - Provide search endpoints backed by Laravel Scout:
+    - Models such as `Hostel`, `Room`, `Student`, `Allocation` implement the `Searchable` trait and are indexed in Algolia. 
+    - Admin and student UIs trigger Scout searches for fast filtering and discovery.
 
 ### Domain model (core entities)
 
@@ -91,18 +100,22 @@ Booking@UMU is a monolithic web application built with Laravel on the backend an
   - Linked to `users` table for auth.
   - Attributes: student number, gender, year of study, faculty, etc.
   - Relationships: has many Applications and Allocations.
+  - Searchable fields (via Scout/Algolia): name, student number, faculty, year of study (for admin search).
 
 - **Hostel**
   - Attributes: name, type (`campus_managed` or `affiliated`), gender policy (male, female, mixed), capacity.
   - Relationships: has many Rooms.
+  - Searchable fields: name, type, gender policy, location.
 
 - **Room**
   - Attributes: hostel, room identifier, capacity, optional room-level gender override.
   - Relationships: has many Beds.
+  - Searchable fields: hostel name, room identifier, occupancy status.
 
 - **Bed**
   - Atomic allocation unit.
   - Relationships: belongs to Room, has many Allocations.
+  - Mostly used in search via allocations (e.g., “find a student’s bed”).
 
 - **Semester / AcademicTerm**
   - Attributes: code, name, academic year, start/end dates.
@@ -111,10 +124,12 @@ Booking@UMU is a monolithic web application built with Laravel on the backend an
 - **Application**
   - Links a Student to a Semester and their preferences.
   - Tracks application status and history.
+  - Searchable fields: status, semester, student identifiers, preferred hostels (for admin queries).
 
 - **Allocation**
   - Links a Student to a Bed for a Semester.
   - Tracks allocation lifecycle status and who made changes.
+  - Searchable fields: student identifiers, hostel, room, bed, semester, status (for quick lookup by admin).
 
 ### Data storage and constraints
 
@@ -137,6 +152,24 @@ Booking@UMU is a monolithic web application built with Laravel on the backend an
   - First-year & retention rules:
     - First-year students must be allocated to campus halls first if space exists, and may only go to affiliated hostels with dean permission.
     - First-year students in campus halls retain their rooms across both semesters of their first academic year unless they leave or are revoked.
+
+### Search architecture (Laravel Scout + Algolia)
+
+- **Laravel Scout**
+  - Provides a driver-based abstraction for full-text search on Eloquent models.
+  - Models that should be searchable (e.g., `Hostel`, `Room`, `Student`, `Allocation`) use the `Searchable` trait.
+  - `toSearchableArray()` is implemented to control which fields are sent to Algolia.
+
+- **Algolia**
+  - Hosted search engine used as the Scout driver for fast, typo-tolerant indexing and querying.
+  - Stores search indices for key models to power:
+    - Admin search bars (find a student by name/number, search hostels/rooms by name or policy).
+    - Student-facing hostel search when selecting preferences.
+  - Algolia credentials (app ID, API key, index names) are stored via environment variables and configured in `config/scout.php`.
+
+- **Frontend integration**
+  - Simple search forms call Laravel controllers, which use Scout to query Algolia and return paginated results.
+  - Optionally, Algolia’s JavaScript helpers or custom React components can be used for richer search UIs.
 
 ### Caching and performance
 
@@ -173,7 +206,7 @@ The project uses a Kanban-style workflow with a GitHub Projects board:
   1. Repo & core skeleton (Laravel + Inertia + React + Tailwind + shadcn/ui).
   2. Domain model & CRUD.
   3. Allocation engine & business rules.
-  4. Dashboards, reporting, observability, and polish.
+  4. Dashboards, reporting, observability, search (Scout + Algolia), and polish.
 
 Each card represents a small, testable change (1–2 days of work) to keep progress incremental and visible.
 
@@ -182,18 +215,21 @@ Each card represents a small, testable change (1–2 days of work) to keep progr
 > Detailed steps will be added as the project evolves.
 
 1. Clone the repository.
-2. Copy `.env.example` to `.env` and configure your local DB.
+2. Copy `.env.example` to `.env` and configure your local DB and Algolia credentials.
 3. Install PHP and JS dependencies:
    - `composer install`
    - `npm install`
 4. Generate app key and run migrations + seeders:
    - `php artisan key:generate`
    - `php artisan migrate --seed`
-5. Start dev servers:
+5. Configure Scout and Algolia:
+   - Set `SCOUT_DRIVER=algolia` and Algolia keys in `.env`. 
+   - Run initial indexing (e.g., `php artisan scout:import "App\\Models\\Hostel"`).
+6. Start dev servers:
    - `php artisan serve`
    - `npm run dev`
-6. Open the dev URL in your browser and log in with a seeded user.
+7. Open the dev URL in your browser and log in with a seeded user.
 
 ---
 
-For more detailed contribution guidelines and task breakdowns, see `CONTRIBUTING.md` and the project Kanban board.
+For more detailed contribution guidelines and task breakdowns, see [CONTRIBUTING.md](CONTRIBUTING.md) and the project Kanban board.

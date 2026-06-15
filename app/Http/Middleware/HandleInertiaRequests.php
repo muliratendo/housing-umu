@@ -34,6 +34,10 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            // Add this specific block to send session flashes down to React
+            'flash' => [
+                'error' => fn () => $request->session()->get('error'),
+            ],
         ];
     }
 }
