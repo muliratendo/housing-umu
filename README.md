@@ -233,3 +233,9 @@ Each card represents a small, testable change (1–2 days of work) to keep progr
 ---
 
 For more detailed contribution guidelines and task breakdowns, see [CONTRIBUTING.md](CONTRIBUTING.md) and the project Kanban board.
+
+# Updates
+
+### Admin Features
+- Admins can verify students via an interactive CSV review and spreadsheet-like editor
+    This architecture allows admins to upload any Excel/CSV file, converts it into an editable tabular spreadsheet view instantly on the client side, modifies incorrect fields inside text cells, and dispatches the sanitized dataset via a clean Inertia JSON payload.

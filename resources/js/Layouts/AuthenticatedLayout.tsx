@@ -1,201 +1,427 @@
-import { route } from 'ziggy-js'; // 👈 Change this line to use standard named import
-import ApplicationLogo from '@/Components/ApplicationLogo';
-import Dropdown from '@/Components/Dropdown';
-import NavLink from '@/Components/NavLink';
-import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
+import { useState, ReactNode } from 'react';
 import { Link, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { route } from 'ziggy-js';
+import {
+  Menu,
+  Home,
+  User,
+  LogOut,
+  Settings,
+  GraduationCap,
+  Building2,
+  Landmark,
+  HelpCircle,
+  ShieldAlert,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-// 1. Declare the structure of your backend shared data variables
 interface CustomPageProps {
   auth: {
     user: {
       id: number;
       name: string;
       email: string;
+      roles: string[]; // 👈 Explicitly type your Spatie roles array
+      permissions: string[]; // 👈 Explicitly type your Spatie permissions array
     };
   };
-  flash: {
-    error?: string;
-  };
-  [key: string]: any; // Catch-all fallback for other unmapped props
+  [key: string]: any;
 }
 
-// Change the old line to this:
+interface AuthenticatedLayoutProps {
+  header?: ReactNode;
+  children: ReactNode;
+}
+
 export default function AuthenticatedLayout({
-    header,
-    children
-}: {
-    header?: React.ReactNode;
-    children: React.ReactNode;
-}) {
-
-  const { auth, flash } = usePage<CustomPageProps>().props;
+  header,
+  children,
+}: AuthenticatedLayoutProps) {
+  const { auth } = usePage<CustomPageProps>().props;
   const user = auth.user;
+  const [isOpen, setIsOpen] = useState<boolean>(false);
 
-  const [showingNavigationDropdown, setShowingNavigationDropdown] =
-    useState(false);
+  // Primary Core Links List Loop
+  // Primary Navigation Section Loop with Custom Role Constraints Filter
+  const CoreNavLinks = ({
+    onClickCallback,
+  }: {
+    onClickCallback?: () => void;
+  }) => {
+    const { auth } = usePage<CustomPageProps>().props;
+    const userRoles = auth.user?.roles || [];
+
+    // Comprehensive array mapping routes to authorized Spatie tiers
+    const links = [
+      // Student Workspace Routes
+      {
+        name: 'Dashboard',
+        href: route('student.dashboard'),
+        icon: Home,
+        routeName: 'student.dashboard',
+        allowedRoles: ['student'],
+      },
+      {
+        name: 'My Bookings',
+        href: '#',
+        icon: Building2,
+        routeName: 'student.bookings',
+        allowedRoles: ['student'],
+      },
+
+      // Warden & Landlord Workspace Routes
+      {
+        name: 'Admin Dashboard',
+        href: route('admin.dashboard'),
+        icon: Home,
+        routeName: 'admin.dashboard',
+        allowedRoles: ['warden', 'super_admin'],
+      },
+      {
+        name: 'Property Allocations',
+        href: '#',
+        icon: Landmark,
+        routeName: 'allocations',
+        allowedRoles: ['warden', 'affiliated_admin', 'super_admin'],
+      },
+      {
+        name: 'Pending Approvals',
+        href: '#',
+        icon: ShieldAlert,
+        routeName: 'admin.verifications',
+        allowedRoles: ['warden', 'dean', 'super_admin'],
+      },
+      {
+        name: 'Platform Settings',
+        href: '#',
+        icon: Settings,
+        routeName: 'system.settings',
+        allowedRoles: ['super_admin'],
+      },
+    ];
+
+    // Filter and compile links based on array intersection evaluation rules
+    const filteredLinks = links.filter((link) =>
+      link.allowedRoles.some((role) => userRoles.includes(role))
+    );
+
+    return (
+      <div className="flex flex-col gap-1 w-full">
+        {filteredLinks.map((link) => {
+          const Icon = link.icon;
+          const isActive = route().current(link.routeName);
+          return (
+            <Link
+              key={link.name}
+              href={link.href}
+              onClick={onClickCallback}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-primary/10 text-primary font-semibold'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {link.name}
+            </Link>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Account & Structural Settings Lower Navigation Block
+  const SettingsNavLinks = ({
+    onClickCallback,
+  }: {
+    onClickCallback?: () => void;
+  }) => {
+    const settingsLinks = [
+      {
+        name: 'Account Settings',
+        href: route('profile.edit'),
+        icon: Settings,
+        routeName: 'profile.edit',
+      },
+      {
+        name: 'Help & Support',
+        href: '#',
+        icon: HelpCircle,
+        routeName: 'support',
+      },
+    ];
+
+    return (
+      <div className="flex flex-col gap-1 w-full">
+        {settingsLinks.map((link) => {
+          const Icon = link.icon;
+          const isActive = route().current(link.routeName);
+          return (
+            <Link
+              key={link.name}
+              href={link.href}
+              onClick={onClickCallback}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-primary/10 text-primary font-semibold'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {link.name}
+            </Link>
+          );
+        })}
+
+        {/* Inertia Form Link Post Action Helper */}
+        <Link
+          href={route('logout')}
+          method="post"
+          as="button"
+          onClick={onClickCallback}
+          className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-all mt-1"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          Log Out
+        </Link>
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* 3. Drop in the flash alert warning block right here */}
-      {flash?.error && (
-        <div className="bg-red-600 text-white px-4 py-3 text-center text-sm font-semibold shadow-md relative z-50 animate-pulse">
-          ⚠️ {flash.error}
-        </div>
-      )}
-
-      <nav className="border-b border-gray-100 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 justify-between">
-            <div className="flex">
-              <div className="flex shrink-0 items-center">
-                <Link href="/">
-                  <ApplicationLogo className="block h-9 w-auto fill-current text-gray-800" />
-                </Link>
-              </div>
-
-              <div className="hidden space-x-8 sm:-my-px sm:ms-10 sm:flex">
-                <NavLink
-                  href={route('dashboard')}
-                  active={route().current('dashboard')}
-                >
-                  Dashboard
-                </NavLink>
-              </div>
-            </div>
-
-            <div className="hidden sm:ms-6 sm:flex sm:items-center">
-              <div className="relative ms-3">
-                <Dropdown>
-                  <Dropdown.Trigger>
-                    <span className="inline-flex rounded-md">
-                      <button
-                        type="button"
-                        className="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none"
-                      >
-                        {user.name}
-
-                        <svg
-                          className="-me-0.5 ms-2 h-4 w-4"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </button>
-                    </span>
-                  </Dropdown.Trigger>
-
-                  <Dropdown.Content>
-                    <Dropdown.Link href={route('profile.edit')}>
-                      Profile
-                    </Dropdown.Link>
-                    <Dropdown.Link
-                      href={route('logout')}
-                      method="post"
-                      as="button"
-                    >
-                      Log Out
-                    </Dropdown.Link>
-                  </Dropdown.Content>
-                </Dropdown>
-              </div>
-            </div>
-
-            <div className="-me-2 flex items-center sm:hidden">
-              <button
-                onClick={() =>
-                  setShowingNavigationDropdown(
-                    (previousState) => !previousState
-                  )
-                }
-                className="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:bg-gray-100 focus:text-gray-500 focus:outline-none"
-              >
-                <svg
-                  className="h-6 w-6"
-                  stroke="currentColor"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    className={
-                      !showingNavigationDropdown ? 'inline-flex' : 'hidden'
-                    }
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M4 6h16M4 12h16M4 18h16"
-                  />
-                  <path
-                    className={
-                      showingNavigationDropdown ? 'inline-flex' : 'hidden'
-                    }
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
+    <div className="flex min-h-screen w-full bg-muted/30">
+      {/* =========================================================================
+                DESKTOP SIDEBAR SHELL (ANCHORED PANEL DESIGN) + LOGO (Using 512px crisp master graphic)
+               ========================================================================= */}
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r bg-background sm:flex justify-between">
+        {/* Header Branding + Primary Links Wrapper Block */}
+        <div className="flex flex-col flex-1">
+          <div className="flex h-16 items-center gap-2 border-b px-6 bg-background">
+            {/* Target your 512px icon from public asset tree */}
+            <img
+              src="/favicon_io/android-chrome-512x512.png"
+              alt="UMU Housing Logo"
+              className="h-8 w-8 object-contain shrink-0"
+            />
+            <span className="text-lg font-bold tracking-tight text-foreground">
+              UMU Housing
+            </span>
           </div>
+          <nav className="px-4 py-6 overflow-y-auto">
+            <CoreNavLinks />
+          </nav>
         </div>
 
-        <div
-          className={
-            (showingNavigationDropdown ? 'block' : 'hidden') + ' sm:hidden'
-          }
-        >
-          <div className="space-y-1 pb-3 pt-2">
-            <ResponsiveNavLink
-              href={route('dashboard')}
-              active={route().current('dashboard')}
+        {/* Anchored Bottom Footnote Component Panel */}
+        <div className="border-t p-4 bg-muted/20">
+          <div className="mb-3 px-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Account & Settings
+            </p>
+          </div>
+          <nav>
+            <SettingsNavLinks />
+          </nav>
+        </div>
+      </aside>
+
+      {/* Core Application Stage Framework */}
+      <div className="flex flex-col flex-1 sm:pl-64 min-h-screen">
+        {/* =========================================================================
+                    SHARED APP TOP HEADER
+                   ========================================================================= */}
+        <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b bg-background/95 backdrop-blur px-4 sm:px-6 shadow-sm">
+          {/* Mobile Dynamic Pull-Out Drawers Container + Logo */}
+          <div className="flex items-center gap-4 sm:hidden">
+            <Sheet open={isOpen} onOpenChange={setIsOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="w-64 p-4 flex flex-col justify-between h-full"
+              >
+                <div className="flex flex-col gap-6">
+                  <SheetHeader className="text-left border-b pb-4">
+                    <SheetTitle className="flex items-center gap-2 text-lg font-bold">
+                      <img
+                        src="/favicon_io/android-chrome-512x512.png"
+                        alt="UMU Housing Logo"
+                        className="h-6 w-6 object-contain shrink-0"
+                      />
+                      <span>UMU Housing</span>
+                    </SheetTitle>
+                  </SheetHeader>
+                  <nav className="flex-1">
+                    <CoreNavLinks onClickCallback={() => setIsOpen(false)} />
+                  </nav>
+                </div>
+
+                {/* Mobile Bottom Sheet Drawer Extension mapping */}
+                <div className="border-t pt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-3">
+                    Account & Settings
+                  </p>
+                  <nav>
+                    <SettingsNavLinks
+                      onClickCallback={() => setIsOpen(false)}
+                    />
+                  </nav>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          {/* Header Context Title Slot */}
+          <div className="flex-1 sm:flex-initial">
+            {header ? (
+              <div className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                {header}
+              </div>
+            ) : (
+              <div className="text-base sm:text-lg font-semibold tracking-tight text-foreground">
+                Dashboard
+              </div>
+            )}
+          </div>
+
+          {/* Top Header Controls Container */}
+          <div className="flex items-center gap-2">
+            {/* 🚀 New Notification Link Anchor Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative h-9 w-9 rounded-full text-muted-foreground hover:text-foreground"
+              asChild
             >
-              Dashboard
-            </ResponsiveNavLink>
-          </div>
+              <Link href="#">
+                <svg
+                  xmlns="http://w3.org"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4"
+                >
+                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                  <path d="M10.3c0 1.3 1.1 2.3 2.4 2.3s2.4-1 2.4-2.3" />
+                </svg>
+                {/* Optional Alert Ping Dot */}
+                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-destructive" />
+              </Link>
+            </Button>
 
-          <div className="border-t border-gray-200 pb-1 pt-4">
-            <div className="px-4">
-              <div className="text-base font-medium text-gray-800">
-                {user.name}
-              </div>
-              <div className="text-sm font-medium text-gray-500">
-                {user.email}
-              </div>
-            </div>
+            {/* Top Header Right Profile Dropdown Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="relative h-9 w-9 rounded-full bg-muted border hover:bg-muted/80 focus-visible:ring-1"
+                >
+                  <User className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 mt-1">
+                <DropdownMenuLabel className="font-normal p-3">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none text-foreground">
+                      {user.name}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground truncate">
+                      {user.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
 
-            <div className="mt-3 space-y-1">
-              <ResponsiveNavLink href={route('profile.edit')}>
-                Profile
-              </ResponsiveNavLink>
-              <ResponsiveNavLink
-                method="post"
-                href={route('logout')}
-                as="button"
-              >
-                Log Out
-              </ResponsiveNavLink>
-            </div>
-          </div>
-        </div>
-      </nav>
+                {/* 🛠️ Account Settings Routing Action */}
+                <DropdownMenuItem asChild>
+                  <Link
+                    href={route('profile.edit')}
+                    className="w-full cursor-pointer flex items-center gap-2 px-2 py-1.5 text-sm"
+                  >
+                    <Settings className="h-4 w-4 text-muted-foreground" />
+                    <span>Account Settings</span>
+                  </Link>
+                </DropdownMenuItem>
 
-      {header && (
-        <header className="bg-white shadow">
-          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-            {header}
+                <DropdownMenuSeparator />
+
+                {/* 🛠️ Log Out Post Submission Action */}
+                <DropdownMenuItem asChild>
+                  <Link
+                    href={route('logout')}
+                    method="post"
+                    as="button"
+                    className="w-full text-left cursor-pointer flex items-center gap-2 px-2 py-1.5 text-sm text-destructive focus:text-destructive focus:bg-destructive/10"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Log Out</span>
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
-      )}
 
-      <main>{children}</main>
+        {/* =========================================================================
+                    MAIN INTERACTIVE CONTENT SPACE
+                   ========================================================================= */}
+        <main className="flex-1 p-4 sm:p-6 md:p-8">
+          <div className="mx-auto max-w-7xl">{children}</div>
+        </main>
+
+        {/* =========================================================================
+                    FOOTER METRICS BAR SHELL
+                   ========================================================================= */}
+        <footer className="border-t bg-background mt-auto py-6 px-4 sm:px-6 md:px-8">
+          <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-4 text-xs sm:text-sm text-muted-foreground">
+            <div>
+              &copy; {new Date().getFullYear()} Uganda Martyrs University. All
+              rights reserved.
+            </div>
+            <div className="flex items-center gap-6">
+              <Link
+                href="#"
+                className="hover:text-foreground transition-colors"
+              >
+                Privacy Policy
+              </Link>
+              <Link
+                href="#"
+                className="hover:text-foreground transition-colors"
+              >
+                Terms of Service
+              </Link>
+              <Link
+                href="#"
+                className="hover:text-foreground transition-colors"
+              >
+                Support Helpline
+              </Link>
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

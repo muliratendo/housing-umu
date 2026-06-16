@@ -1,9 +1,10 @@
-import InputError from '@/Components/InputError';
-import InputLabel from '@/Components/InputLabel';
-import PrimaryButton from '@/Components/PrimaryButton';
-import TextInput from '@/Components/TextInput';
+import { useEffect, FormEventHandler } from 'react';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
+import { route } from 'ziggy-js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -13,7 +14,13 @@ export default function Register() {
         password_confirmation: '',
     });
 
-    const submit = (e) => {
+    useEffect(() => {
+        return () => {
+            reset('password', 'password_confirmation');
+        };
+    }, []);
+
+    const submit: FormEventHandler = (e) => {
         e.preventDefault();
 
         post(route('register'), {
@@ -23,96 +30,89 @@ export default function Register() {
 
     return (
         <GuestLayout>
-            <Head title="Register" />
+            <Head title="Register Account" />
 
-            <form onSubmit={submit}>
-                <div>
-                    <InputLabel htmlFor="name" value="Name" />
-
-                    <TextInput
+            <form onSubmit={submit} className="space-y-4">
+                {/* Full Name Field */}
+                <div className="space-y-1.5">
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input
                         id="name"
                         name="name"
                         value={data.name}
-                        className="mt-1 block w-full"
+                        className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
                         autoComplete="name"
-                        isFocused={true}
+                        autoFocus
                         onChange={(e) => setData('name', e.target.value)}
                         required
                     />
-
-                    <InputError message={errors.name} className="mt-2" />
+                    {errors.name && <p className="text-xs font-semibold text-destructive">{errors.name}</p>}
                 </div>
 
-                <div className="mt-4">
-                    <InputLabel htmlFor="email" value="Email" />
-
-                    <TextInput
+                {/* Email Address Field */}
+                <div className="space-y-1.5">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input
                         id="email"
                         type="email"
                         name="email"
                         value={data.email}
-                        className="mt-1 block w-full"
+                        className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
                         autoComplete="username"
                         onChange={(e) => setData('email', e.target.value)}
                         required
                     />
-
-                    <InputError message={errors.email} className="mt-2" />
+                    {errors.email && <p className="text-xs font-semibold text-destructive">{errors.email}</p>}
                 </div>
 
-                <div className="mt-4">
-                    <InputLabel htmlFor="password" value="Password" />
-
-                    <TextInput
+                {/* Password Field */}
+                <div className="space-y-1.5">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
                         id="password"
                         type="password"
                         name="password"
                         value={data.password}
-                        className="mt-1 block w-full"
+                        className={errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}
                         autoComplete="new-password"
                         onChange={(e) => setData('password', e.target.value)}
                         required
                     />
-
-                    <InputError message={errors.password} className="mt-2" />
+                    {errors.password && <p className="text-xs font-semibold text-destructive">{errors.password}</p>}
                 </div>
 
-                <div className="mt-4">
-                    <InputLabel
-                        htmlFor="password_confirmation"
-                        value="Confirm Password"
-                    />
-
-                    <TextInput
+                {/* Confirm Password Field */}
+                <div className="space-y-1.5">
+                    <Label htmlFor="password_confirmation">Confirm Password</Label>
+                    <Input
                         id="password_confirmation"
                         type="password"
                         name="password_confirmation"
                         value={data.password_confirmation}
-                        className="mt-1 block w-full"
+                        className={errors.password_confirmation ? 'border-destructive focus-visible:ring-destructive' : ''}
                         autoComplete="new-password"
-                        onChange={(e) =>
-                            setData('password_confirmation', e.target.value)
-                        }
+                        onChange={(e) => setData('password_confirmation', e.target.value)}
                         required
                     />
-
-                    <InputError
-                        message={errors.password_confirmation}
-                        className="mt-2"
-                    />
+                    {errors.password_confirmation && (
+                        <p className="text-xs font-semibold text-destructive">{errors.password_confirmation}</p>
+                    )}
                 </div>
 
-                <div className="mt-4 flex items-center justify-end">
-                    <Link
-                        href={route('login')}
-                        className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                    >
-                        Already registered?
-                    </Link>
+                {/* Action Row */}
+                <div className="pt-2 space-y-3">
+                    <Button type="submit" className="w-full font-medium" disabled={processing}>
+                        {processing ? 'Creating Account...' : 'Register'}
+                    </Button>
 
-                    <PrimaryButton className="ms-4" disabled={processing}>
-                        Register
-                    </PrimaryButton>
+                    <div className="text-center">
+                        <Link
+                            href={route('login')}
+                            className="text-xs text-muted-foreground underline hover:text-foreground transition-colors font-medium"
+                        >
+                            Already registered? Sign In
+                        </Link>
+                    </div>
                 </div>
             </form>
         </GuestLayout>

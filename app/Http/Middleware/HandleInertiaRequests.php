@@ -32,11 +32,14 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user(),
-            ],
-            // Add this specific block to send session flashes down to React
-            'flash' => [
-                'error' => fn () => $request->session()->get('error'),
+                'user' => $request->user() ? [
+                    'id' => $request->user()->id,
+                    'name' => $request->user()->name,
+                    'email' => $request->user()->email,
+                    // 🚀 Pass array of active roles and permissions down to React
+                    'roles' => $request->user()->getRoleNames(),
+                    'permissions' => $request->user()->getAllPermissions()->pluck('name'),
+                ] : null,
             ],
         ];
     }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\VerifiedStudentRecord;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,20 @@ class RegisteredUserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+
+        // 🚀 1. Assign the global default base student role
+        $user->assignRole('student');
+
+        // 🚀 2. Proactive Lookup: Check if their email or name exists in pre-uploaded spreadsheets
+        $matchingRecord = VerifiedStudentRecord::where('user_id', null)
+            ->where(function($query) use ($user) {
+                $query->where('full_name', 'LIKE', '%' . $user->name . '%');
+            })->first();
+
+        if ($matchingRecord) {
+            $matchingRecord->update(['user_id' => $user->id]);
+            $user->assignRole('verifiedStudent');
+        }
 
         event(new Registered($user));
 
