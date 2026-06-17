@@ -1,48 +1,68 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\VerifiedStudentRecord;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
 
-public function uploadSpreadsheet(Request $request)
+class StudentVerificationController extends Controller
 {
-    $this->authorizeAdmin();
+    // ... your index method can sit here ...
 
-    $request->validate([
-        'students' => 'required|array',
-        'students.*.reg_number' => 'required|string',
-        'students.*.first_name' => 'required|string',
-        'students.*.last_name' => 'required|string',
-    ]);
+    // 🚀 Place the method safely INSIDE the class body block:
+    public function uploadSpreadsheet(Request $request)
+    {
+        $this->authorizeAdmin();
 
-    $incomingData = $request->input('students');
+        $request->validate([
+            'students' => 'required|array',
+            'students.*.reg_number' => 'required|string',
+            'students.*.first_name' => 'required|string',
+            'students.*.last_name' => 'required|string',
+        ]);
 
-    foreach ($incomingData as $studentData) {
-        // Find if a student user exists via email match or fuzzy matching full name combo
-        $matchedUser = User::where('email', $studentData['student_email'])
-            ->orWhere(function($query) use ($studentData) {
-                $fullName = trim($studentData['first_name'] . ' ' . $studentData['last_name']);
-                $query->where('name', 'LIKE', '%' . $fullName . '%');
-            })->first();
+        $incomingData = $request->input('students');
 
-        // Update existing record if reg_number matches, or create a brand new row entry
-        $record = VerifiedStudentRecord::updateOrCreate(
-            ['reg_number' => $studentData['reg_number']],
-            [
-                'student_email' => $studentData['student_email'] ?? null,
-                'contact'       => $studentData['contact'] ?? null,
-                'first_name'    => $studentData['first_name'],
-                'last_name'     => $studentData['last_name'],
-                'faculty'       => $studentData['faculty'] ?? 'General',
-                'course'        => $studentData['course'] ?? 'General',
-                'gender'        => $studentData['gender'] ?? 'Other',
-                'user_id'       => $matchedUser ? $matchedUser->id : null,
-            ]
-        );
+        foreach ($incomingData as $studentData) {
+            $matchedUser = User::where('email', $studentData['student_email'])
+                ->orWhere(function($query) use ($studentData) {
+                    $fullName = trim($studentData['first_name'] . ' ' . $studentData['last_name']);
+                    $query->where('name', 'LIKE', '%' . $fullName . '%');
+                })->first();
 
-        // Instantly upgrade role tracking if accounts bridge correctly
-        if ($matchedUser) {
-            $matchedUser->removeRole('student');
-            $matchedUser->assignRole('verifiedStudent');
+            VerifiedStudentRecord::updateOrCreate(
+                ['reg_number' => $studentData['reg_number']],
+                [
+                    'student_email' => $studentData['student_email'] ?? null,
+                    'contact'       => $studentData['contact'] ?? null,
+                    'first_name'    => $studentData['first_name'],
+                    'last_name'     => $studentData['last_name'],
+                    'faculty'       => $studentData['faculty'] ?? 'General',
+                    'course'        => $studentData['course'] ?? 'General',
+                    'gender'        => $studentData['gender'] ?? 'Other',
+                    'user_id'       => $matchedUser ? $matchedUser->id : null,
+                ]
+            );
+
+            if ($matchedUser) {
+                $matchedUser->removeRole('student');
+                $matchedUser->assignRole('verifiedStudent');
+            }
         }
+
+        return back()->with('success', count($incomingData) . ' spreadsheet student records compiled successfully.');
     }
 
-    return back()->with('success', count($incomingData) . ' spreadsheet student records compiled successfully.');
+    private function authorizeAdmin()
+    {
+        // 🚀 FIXED: Pull user instance directly via $request pointer context
+        $user = request()->user();
+
+        if (! $user || ! $user->hasAnyRole(['super_admin', 'dean', 'affiliated_admin', 'warden'])) {
+            abort(403, 'Unauthorized administrative access portal.');
+        }
+    }
 }

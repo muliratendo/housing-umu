@@ -7,6 +7,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "ext-pdo_pgsql": "*",
         "algolia/algoliasearch-client-php": "^4.45",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/framework": "^13.8",

@@ -9,6 +9,7 @@ use App\Http\Controllers\ApplicationController; // Fixes your ApplicationControl
 use App\Http\Controllers\PublicHostelController; // Fixes your PublicHostelController error
 use App\Http\Controllers\BookingController;      // Fixes your BookingController error
 use App\Http\Controllers\ApprovalController;     // Fixes your ApprovalController error
+use App\Http\Controllers\Admin\StudentVerificationController; // Fixes your StudentVerificationController error
 use Inertia\Inertia;
 
 
@@ -96,4 +97,10 @@ Route::middleware(['auth'])->group(function () {
     // Laravel automatically passes the route model ID parameter through the ApplicationPolicy
     Route::get('/applications/{housingApplication}', [ApplicationController::class, 'show'])
         ->middleware('can:view,housingApplication');
+});
+
+Route::middleware(['auth'])->prefix('admin')->group(function () {
+    // 🚀 FIXED: Point the POST action clean straight to the controller class method
+    Route::post('/verifications/upload', [StudentVerificationController::class, 'uploadSpreadsheet'])
+        ->name('admin.verifications.upload');
 });

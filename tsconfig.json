@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-      "baseUrl": ".",
       "target": "esnext",
       "module": "esnext",
       "moduleResolution": "bundler",
@@ -11,7 +10,7 @@
       "lib": ["dom", "dom.iterable", "esnext"],
       "skipLibCheck": true,
       "paths": {
-          "@/*": ["resources/js/*"]
+          "@/*": ["./resources/js/*"] // 🚀 FIXED: Added leading ./ and dropped baseUrl entirely
       }
   },
   "include": ["resources/js/**/*", "resources/js/**/*.tsx", "resources/js/**/*.ts"]
