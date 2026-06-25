@@ -3,15 +3,14 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
-use App\Models\HousingUnit;
-use App\Models\Application as housingApplication;
-use App\Http\Controllers\ApplicationController; // Fixes your ApplicationController error
-use App\Http\Controllers\PublicHostelController; // Fixes your PublicHostelController error
-use App\Http\Controllers\BookingController;      // Fixes your BookingController error
-use App\Http\Controllers\ApprovalController;     // Fixes your ApprovalController error
-use App\Http\Controllers\Admin\StudentVerificationController; // Fixes your StudentVerificationController error
+use App\Http\Controllers\ApplicationController;
+use App\Http\Controllers\PublicHostelController;
+use App\Http\Controllers\PublicRoomController;
+use App\Http\Controllers\BookingController;
+use App\Http\Controllers\ApprovalController;
+use App\Http\Controllers\Admin\StudentVerificationController;
+use App\Models\User;
 use Inertia\Inertia;
-
 
 /*
 |--------------------------------------------------------------------------
@@ -24,10 +23,25 @@ Route::get('/', function () {
         'canRegister' => Route::has('register'),
         'laravelVersion' => Application::VERSION,
         'phpVersion' => PHP_VERSION,
-    ]); // Points to Pages/Public/Welcome.tsx
+    ]);
 })->name('welcome');
 
-Route::get('/hostels', [PublicHostelController::class, 'index'])->name('public.hostels.index');
+// Dynamic search catalog route passing query filter requests
+Route::prefix('hostels')->name('public.hostels.')->group(function () {
+    Route::get('/', [PublicHostelController::class, 'index'])
+        ->name('index');
+
+    Route::get('/{hostel:slug}', [PublicHostelController::class, 'show'])
+        ->name('show');
+});
+// Additional public marketing layout anchor content views
+Route::get('/how-it-works', function () {
+    return Inertia::render('Public/HowItWorks');
+})->name('public.how-it-works');
+
+Route::get('/get-help', function () {
+    return Inertia::render('Public/Support');
+})->name('public.support');
 
 
 /*
@@ -40,7 +54,7 @@ require __DIR__.'/auth.php';
 
 /*
 |--------------------------------------------------------------------------
-| 3. STUDENT UI ROUTES (Requires Auth and Student Role)
+| 3. STUDENT PORTAL UI ROUTES (Requires Auth and Student Role)
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'verified', 'role:student'])->prefix('student')->group(function () {
@@ -66,41 +80,63 @@ Route::middleware(['auth', 'verified', 'role:student'])->prefix('student')->grou
                     'price' => 'UGX 750,000 / Semester'
                 ]
             ]
-        ]); // Pages/Student/Dashboard.tsx
+        ]);
     })->name('student.dashboard');
 
-    Route::get('/bookings', [BookingController::class, 'index'])->name('student.bookings');
+    // Application form for a specific hostel room
+    Route::get(
+        '/applications/create',
+        [ApplicationController::class, 'create']
+    )->name('applications.create');
 });
 
 
 /*
 |--------------------------------------------------------------------------
-| 4. ADMIN CONTROL UI ROUTES (Requires Auth and System Admin Role)
+| 4. ADMINISTRATIVE CONTROL UI ROUTES (Requires Auth and Admin Roles)
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
+Route::middleware(['auth', 'role:admin|super_admin|warden|dean'])->prefix('admin')->group(function () {
+
+    // Core Administrative Dashboard
     Route::get('/dashboard', function () {
-        return Inertia::render('Admin/Dashboard'); // Pages/Admin/Dashboard.tsx
+        return Inertia::render('Admin/Dashboard');
     })->name('admin.dashboard');
 
     Route::get('/verifications', [ApprovalController::class, 'index'])->name('admin.verifications');
+
+    // 🚀 Complete Interactive Student Spreadsheet Verification Management Suite
+    Route::get('/student-verification', [StudentVerificationController::class, 'index'])->name('admin.verifications.index');
+    Route::post('/verifications/upload', [StudentVerificationController::class, 'uploadSpreadsheet'])->name('admin.verifications.upload');
+    Route::post('/verifications/toggle-role/{user}', [StudentVerificationController::class, 'toggleRole'])->name('admin.verifications.toggle-role');
+    Route::post('/verifications/link/{record}', [StudentVerificationController::class, 'linkAccount'])->name('admin.verifications.link');
+    Route::post('/verifications/unlink/{record}', [StudentVerificationController::class, 'unlinkAccount'])->name('admin.verifications.unlink');
 });
 
 
+/*
+|--------------------------------------------------------------------------
+| 5. SHARED PROFILE USER UTILITIES
+|--------------------------------------------------------------------------
+*/
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::get('/dashboard', function () {
+        /** @var User|null $user */
+        $user = auth()->user();
+
+        if ($user && $user->hasAnyRole(['admin', 'super_admin', 'warden', 'dean'])) {
+            return redirect()->route('admin.dashboard');
+        }
+
+        return redirect()->route('student.dashboard');
+    })->name('dashboard');
 });
 
-Route::middleware(['auth'])->group(function () {
-    // Laravel automatically passes the route model ID parameter through the ApplicationPolicy
+Route::middleware('auth')->group(function () {
     Route::get('/applications/{housingApplication}', [ApplicationController::class, 'show'])
         ->middleware('can:view,housingApplication');
-});
-
-Route::middleware(['auth'])->prefix('admin')->group(function () {
-    // 🚀 FIXED: Point the POST action clean straight to the controller class method
-    Route::post('/verifications/upload', [StudentVerificationController::class, 'uploadSpreadsheet'])
-        ->name('admin.verifications.upload');
 });

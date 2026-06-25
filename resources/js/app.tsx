@@ -19,7 +19,7 @@ const appName =
   window.document.getElementsByTagName('title')[0]?.innerText || 'HOusing@UMU';
 
 createInertiaApp({
-  title: (title) => `${title} - ${appName}`,
+  title: (title) => (title ? `${title} | Housing@UMU` : 'Housing@UMU'),
   resolve: (name) =>
     resolvePageComponent(
       `./Pages/${name}.tsx`,

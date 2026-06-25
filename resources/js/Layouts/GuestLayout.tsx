@@ -29,7 +29,7 @@ export default function GuestLayout({ children, showNavAndFooter = false }: Gues
             <div className="w-full max-w-sm md:max-w-md space-y-6">
                 <div className="flex flex-col items-center gap-2 text-center">
                     <Link href="/">
-                        <img src="/favicon_io/android-chrome-512x512.png" alt="UMU Logo" className="h-12 w-12 object-contain mx-auto animate-in fade-in zoom-in-95 duration-200" />
+                        <img src="/images/umu.png" alt="UMU Logo" className="h-28 w-32 object-contain mx-auto animate-in fade-in zoom-in-95 duration-200" />
                         <h1 className="text-2xl font-bold tracking-tight mt-2 text-foreground">UMU Accommodation Portal</h1>
                     </Link>
                 </div>

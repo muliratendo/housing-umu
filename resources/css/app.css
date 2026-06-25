@@ -1,3 +1,5 @@
+/* Explicitly import Google's Roboto font axes for structural flexibility */
+@import url('https://googleapis.com');
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -6,16 +8,17 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  /* --- 1. Typography (Matching UMU's clean academic profile) --- */
+  /* --- 1. Typography (Swapped headings from Merriweather to Roboto) --- */
   --font-sans: 'Figtree', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-serif: 'Merriweather', Georgia, serif;
+  --font-heading: 'Roboto', 'Inter', sans-serif; /* Explicit Roboto integration for UMU headings */
+  --font-logo: 'Uncial Antiqua', Georgia, serif; /* Custom brand text font */
 
   /* --- 2. Official UMU Brand Color Palette --- */
-  --color-brand-50: #f2f8f4; /* Very light emerald tint for backgrounds */
-  --color-brand-100: #e1efe5; /* Light border green */
-  --color-brand-600: #0f6233; /* Official UMU Deep Emerald Green */
-  --color-brand-700: #0b4b27; /* Darker shade for text headers and hover states */
-  --color-brand-900: #062b16; /* Deepest green for primary typography */
+  --color-brand-red: #AD3027;   /* Official UMU Deep Crimson/Red Background */
+  --color-brand-dark: #801212;  /* Slightly darker red variant for gradient depth */
+  --color-brand-black: #0f0f0f; /* Pure contrast black for primary typography */
+  --color-brand-700: #137c41; /* Official UMU Deep Emerald Green */
+  --color-brand-800: #0b4b27; /* Darker shade for text headers and hover states */
 
   /* Secondary UMU Color (Academic Gold) */
   --color-accent-500: #f1b418; /* Official UMU Warm Gold for primary badges & buttons */
@@ -86,7 +89,7 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(68.874% 0.00348 16.006);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -148,9 +151,37 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* FAQ arrow (marker) color */
+  details summary::marker {
+    color: var(--color-accent-500); /* or any of your theme vars, e.g. var(--color-brand-700) */
+  }
+
+  /* Dark mode tweak if you want a different arrow color there */
+  .dark details summary::marker {
+    color: var(--color-accent-600);
+  }
+
+  /* Global select arrow styling */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23f1b418' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 0.85rem;
+    padding-right: 2rem;
+  }
+
+  .dark select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23d49b0e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
   html {
-    @apply font-sans;
+    scroll-padding-top: 6rem; /* match header height */
+    scroll-behavior: smooth;  /* optional, for nicer jumps */
   }
 }

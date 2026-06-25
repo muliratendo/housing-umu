@@ -58,11 +58,12 @@ class StudentVerificationController extends Controller
 
     private function authorizeAdmin()
     {
-        // 🚀 FIXED: Pull user instance directly via $request pointer context
+        // 🚀 FIXED: Pull the user instance directly via the request context helper
         $user = request()->user();
 
         if (! $user || ! $user->hasAnyRole(['super_admin', 'dean', 'affiliated_admin', 'warden'])) {
             abort(403, 'Unauthorized administrative access portal.');
         }
     }
+
 }

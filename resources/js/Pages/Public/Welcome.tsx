@@ -109,8 +109,7 @@ export default function Welcome() {
                         ? route('admin.dashboard')
                         : route('student.dashboard')
                     }
-                  >
-                    Enter Account Portal <ArrowRight className="h-4 w-4" />
+                  >My Dashboard<ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
               ) : (
@@ -128,7 +127,7 @@ export default function Welcome() {
                     variant="outline"
                     className="font-medium w-full sm:w-auto bg-background"
                   >
-                    <Link href={route('login')}>Administrative Access</Link>
+                      <Link href={route('public.hostels.index')}>View Available Hostels</Link>
                   </Button>
                 </>
               )}
@@ -339,7 +338,7 @@ export default function Welcome() {
                   variant="outline"
                   className="w-full text-xs font-semibold"
                 >
-                  <Link href="/contact-support">Contact Support</Link>
+                  <Link href="/get-help">Contact Support</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -415,9 +414,9 @@ export default function Welcome() {
       </section>
 
       {/* =========================================================================
-                5. ACTIONS BOTTOM Call-To-Action (CTA) SEGMENT
-               ========================================================================= */}
-      <section className="px-4 sm:px-6 lg:px-8 py-16 md:py-20 bg-primary text-primary-foreground text-center relative overflow-hidden">
+            5. ACTIONS BOTTOM Call-To-Action (CTA) SEGMENT
+          ========================================================================= */}
+      <section className="px-4 sm:px-6 lg:px-8 py-16 md:py-20 bg-brand-dark text-primary-foreground text-center relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.4)_0,transparent_100%)] pointer-events-none" />
         <div className="mx-auto max-w-4xl space-y-6 relative z-10">
           <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl font-sans max-w-2xl mx-auto leading-tight">
@@ -427,15 +426,16 @@ export default function Welcome() {
             <Button
               asChild
               size="lg"
-              variant="secondary"
-              className="w-full sm:w-auto font-bold tracking-tight"
+              variant="outline"
+              className="text-black gap-1.5 transition-all duration-300 ease-in-out hover:bg-brand-black hover:text-accent-500 hover:border-brand-600"
             >
               <Link href="/hostels">View Hostel List</Link>
             </Button>
             <Button
               asChild
               size="lg"
-              className="w-full sm:w-auto font-bold tracking-tight bg-background text-foreground hover:bg-background/90 border-none shadow-md"
+              variant="outline"
+              className="text-black gap-1.5 transition-all duration-300 ease-in-out hover:bg-brand-black hover:text-accent-500 hover:border-brand-600"
             >
               <Link
                 href={auth.user ? route('student.dashboard') : route('login')}
