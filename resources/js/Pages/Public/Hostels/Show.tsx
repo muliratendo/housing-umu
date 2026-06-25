@@ -127,12 +127,13 @@ export default function Show({ hostel }: ShowProps): React.JSX.Element {
                     {/* Footer (button) */}
                     <div className="mt-auto mx-auto items-center pt-3">
                       <Link
-                        href={route('student.applications.create', {
-                          hostel_slug: hostel.slug,
-                          hostel_id: hostel.id,
-                          room_id: room.id,
-                          room_type: room.room_type,
-                        })}
+                        // href={route('student.applications.create', {
+                        //   hostel_slug: hostel.slug,
+                        //   hostel_id: hostel.id,
+                        //   room_id: room.id,
+                        //   room_type: room.room_type,
+                        // })}
+                        href="#"
                         className="inline-flex items-center gap-2 rounded-full  px-20 bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-all duration-200 group-hover:px-24 hover:bg-accent-600"
                       >
                         Apply Now
