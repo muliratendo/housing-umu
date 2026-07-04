@@ -31,7 +31,7 @@
         "tailwindcss": "^4.3.1",
         "typescript": "^6.0.3",
         "vite": "^8.0.0",
-        "ziggy-js": "^2.6.2"
+        "ziggy-js": "^2.6.3"
     },
     "overrides": {
         "shell-quote": "^1.8.4"

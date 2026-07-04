@@ -1,35 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import GuestLayout from '@/Layouts/GuestLayout'; // 🚀 Import layout wrapper
+import GuestLayout from '@/Layouts/GuestLayout';
 import { Link, Head, usePage } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  GraduationCap,
   ArrowRight,
   Building2,
   FileText,
   Cpu,
   CheckCircle,
-  HelpCircle,
   UserCheck,
   ShieldAlert,
   Users,
   RefreshCw,
   Wrench,
   PhoneCall,
-  LogIn,
   Home,
   ChevronDown,
-  ArrowUp,
 } from 'lucide-react';
 
-// 🚀 FIXED: Extend PageProps and supply the explicit index signature fallback
-interface CustomWelcomeProps extends Record<string, unknown> {
-  auth: {
-    user: any;
-  };
+// Extend PageProps and supply the explicit index signature fallback
+interface OccupancySnapshot {
+  allocation_percentage: number;
+  allocated_beds: number;
+  total_beds: number;
+  term_name: string | null;
+  academic_year: string | null;
+}
+
+interface WelcomeProps {
+  auth: { user: any };
+  canLogin: boolean;
+  canRegister: boolean;
+  occupancySnapshot: OccupancySnapshot;
   [key: string]: any;
 }
 
@@ -49,20 +54,12 @@ export default function Welcome() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Smooth navigation viewport click helper
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   const scrollDownALittle = () => {
     window.scrollTo({ top: window.innerHeight * 0.8, behavior: 'smooth' });
   };
 
-  // TypeScript will now cleanly map the props without throwing exceptions
-  const { auth } = usePage<CustomWelcomeProps>().props;
-
-  // Fixed dummy occupancy metrics calculation
-  const currentAllocationPercentage = 84;
+  const { auth, occupancySnapshot } = usePage<WelcomeProps>().props;
+  const currentAllocationPercentage = occupancySnapshot.allocation_percentage;
 
   return (
     <GuestLayout showNavAndFooter={true}>
@@ -183,8 +180,12 @@ export default function Welcome() {
                     {currentAllocationPercentage}%
                   </span>
                 </div>
-                <span className="text-xs font-bold text-foreground leading-none tracking-tight">
+                <span className="text-sm font-bold text-foreground leading-none tracking-tight">
                   Current Capacity
+                  {/* <p className="text-xs text-muted-foreground">
+                    {occupancySnapshot.allocated_beds} of {occupancySnapshot.total_beds} beds filled
+                    {occupancySnapshot.term_name ? ` — ${occupancySnapshot.term_name}` : ''}
+                  </p> */}
                 </span>
                 <span className="text-[10px] text-muted-foreground mt-0.5">
                   Semestral Allocation
@@ -472,17 +473,7 @@ export default function Welcome() {
       {/* =========================================================================
             B. NON-INVASIVE BACK TO TOP BUTTON OVERLAY
           ========================================================================= */}
-      <button
-        onClick={scrollToTop}
-        className={`fixed bottom-6 right-6 z-40 h-10 w-10 rounded-xl bg-primary text-primary-foreground shadow-lg border border-primary flex items-center justify-center hover:bg-primary/90 hover:scale-105 active:scale-95 transition-all duration-300 ${
-          scrollY > 400
-            ? 'opacity-100 translate-y-0 cursor-pointer'
-            : 'opacity-0 translate-y-6 pointer-events-none'
-        }`}
-        aria-label="Back to top"
-      >
-        <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-      </button>
+
     </GuestLayout>
   );
 }

@@ -1,5 +1,4 @@
 /* Explicitly import Google's Roboto font axes for structural flexibility */
-@import url('https://googleapis.com');
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";

@@ -1,219 +1,191 @@
-# Contributing to Booking@UMU
+# Contributing to Housing@UMU
 
-Thank you for considering contributing to **Booking@UMU – Student Hostel Allocation Platform**.  
-This document explains how we work, how our **Kanban process** is set up, and how the **project phases** are organized, including search features powered by **Laravel Scout + Algolia**.
+Thank you for contributing to **Housing@UMU — Student Accommodation Management Platform**.
+This document covers the Kanban workflow, project phases, Algolia/Scout integration guidelines,
+and coding standards.
 
-We welcome contributions of all kinds: code, documentation, testing, UX feedback, infrastructure, and ideas.
+All contributions are welcome: code, documentation, tests, UX feedback, and DevOps improvements.
 
 ---
 
 ## 1. Kanban workflow
 
-We use a simple Kanban board (GitHub Projects) to visualize work and keep flow smooth.
+We use GitHub Projects (Kanban board) to track all work.
 
-**Board columns:**
+| Column | Meaning |
+|--------|---------|
+| `Backlog` | Future ideas, not yet ready |
+| `Ready` | Clearly defined, acceptance criteria written — pick this up |
+| `In Progress` | Actively worked on — **max 2 cards per person** |
+| `Review` | PR open, awaiting review |
+| `Done` | Merged and closed |
 
-- `Backlog` – ideas and future work, not yet ready for implementation.
-- `Ready` – clearly defined tasks that are ready to be picked up.
-- `In Progress` – tasks actively being worked on (limit this).
-- `Review` – work that has a pull request open and is waiting for review.
-- `Done` – completed, reviewed, and merged work.
-
-**Core Kanban practices:**
-
-- **Visualize work** – every task should be an Issue and appear on the board.
-- **Limit Work In Progress (WIP)** – aim for at most **2 cards** in `In Progress` per person.  
-- **Manage flow** – move cards across columns as you work; ship small, frequent changes.  
-- **Continuously improve** – if the workflow hurts, open an Issue or PR to improve it.
+**Core practices:**
+- Every task = a GitHub Issue on the board.
+- Keep PRs small and focused on one issue.
+- Move your card across columns as you work.
 
 ---
 
 ## 2. Project phases
 
-Work is grouped into **phases** to keep scope under control. Phases overlap, but they help organize the backlog and priorities.
+| Phase | Focus |
+|-------|-------|
+| **1 — Skeleton** | Laravel + Inertia + React + Tailwind + shadcn/ui, Breeze auth, Render deploy, CI |
+| **2 — Domain model** | Student, Hostel, Room, Bed, AcademicTerm, Application, Allocation migrations, CRUD |
+| **3 — Allocation engine** | Capacity, gender, first-year priority, Dean permission, retention, waitlist |
+| **4 — Dashboards + Search** | Student/admin dashboards, Scout + Algolia integration, Redis cache, monitoring |
+| **5 — Auth hardening** | Google OAuth (Socialite), 2FA (PragmaRX Google2FA), email verification |
 
-### Phase 1 – Core skeleton & deployment
-
-- Set up Laravel + Inertia + React + Tailwind + shadcn/ui.
-- Add auth (Laravel Breeze Inertia stack) and base roles.
-- Deploy a working skeleton (landing page + basic dashboards shell) to Render.
-- Set up CI (GitHub Actions) for tests and builds.
-
-### Phase 2 – Domain model & CRUD
-
-- Implement core entities:
-  - Student, Hostel, Room, Bed, Semester, Application, Allocation.
-- Build admin CRUD for hostels/rooms/beds/students.
-- Seed realistic test data for hostels, students, and semesters.
-
-### Phase 3 – Allocation logic & rules
-
-- Implement capacity, gender-policy, and bed-uniqueness rules.
-- Implement first-year priority, dean-permission logic, and retention across the academic year.
-- Build the allocation engine and waitlist handling.
-- Add basic search endpoints for entities to prepare for Algolia integration.
-
-### Phase 4 – Dashboards, search, observability & polish
-
-- Build admin and student dashboards with metrics and tables.
-- Integrate **Laravel Scout + Algolia** to provide fast search for:
-  - Hostels (by name, type, gender, capacity).
-  - Students (by name, student number).
-  - Applications/Allocations (by semester, hostel, status).
-- Add caching (Redis) for heavy read operations.
-- Add monitoring (health checks, uptime), logging, and test coverage for critical flows.
-
-Issues are labeled by phase (e.g., `phase:1`, `phase:2`, `phase:3`, `phase:4`) so you can filter the board easily.
+Issues are labelled `phase:1` … `phase:5` and `area:frontend`, `area:backend`, `area:search`, `area:devops`.
 
 ---
 
 ## 3. How to pick up work
 
-1. **Browse the board**
-   - Open the GitHub Projects Kanban board.
-   - Filter by phase (`phase:2`, `phase:3`, etc.) or area (`area:frontend`, `area:backend`, `area:search`).
-
-2. **Choose a task from `Ready`**
-   - Pick a card that:
-     - Has a clear description and acceptance criteria.
-     - Matches your skills or something you want to learn.
-   - If anything is unclear, ask in the Issue comments before starting.
-
-3. **Assign yourself & move to `In Progress`**
-   - Assign the Issue to yourself.
-   - Move the card from `Ready` → `In Progress` (respect WIP limit).
-
-4. **Create a branch**
-   - Use a descriptive branch name, such as:
-     - `feature/p3-allocation-engine`
-     - `feature/p4-algolia-hostel-search`
-     - `fix/p2-room-validation`
-   - Make sure your branch is up to date with `main`.
-
-5. **Implement and keep the Issue updated**
-   - Commit in small steps with clear messages.
-   - Reference the Issue number in commits or PR description (e.g., `Fixes #34`).
-
-6. **Open a Pull Request (PR)**
-   - When ready, open a PR to `main`.
-   - Link the PR to the Issue.
-   - Move the card to `Review`.
-
-7. **Incorporate review feedback**
-   - Address comments and push follow-up commits.
-   - Once approved and merged, move the card to `Done`.
+1. Browse the Kanban board; filter by phase or area.
+2. Choose a `Ready` card with clear acceptance criteria.
+3. Assign yourself; move to `In Progress`.
+4. Create a branch:
+   - `feature/p3-allocation-engine`
+   - `feature/p4-algolia-hostel-search`
+   - `fix/p2-room-capacity-validation`
+5. Commit incrementally; reference the issue (`Fixes #34`).
+6. Open a PR to `main`; link the issue; move card to `Review`.
+7. Address review feedback; merge; move card to `Done`.
 
 ---
 
-## 4. Types of contributions we welcome
+## 4. Algolia + Laravel Scout integration guide
 
-### Application features
+### Configuration
 
-- **Frontend (Laravel + Inertia + React + Tailwind + shadcn/ui)**
-  - New pages or components (dashboards, forms, tables, modals).
-  - Improvements to layout, responsiveness, and accessibility.
-  - Search UIs for Algolia (search boxes, filters, instant results).
+```dotenv
+SCOUT_DRIVER=algolia
+ALGOLIA_APP_ID=your_app_id
+ALGOLIA_SECRET=your_admin_api_key
+```
 
-- **Backend (Laravel)**
-  - Domain services and business rules (allocation engine, constraints).
-  - Search indices and query endpoints using **Laravel Scout + Algolia**.
-  - Performance optimizations and refactors.
+Use `SCOUT_DRIVER=collection` locally when you do not have Algolia credentials.
+The public hostel list degrades gracefully to MySQL `LIKE` queries in this case.
 
-### Search: Algolia + Laravel Scout
+### Searchable models (planned)
 
-- Installing and configuring Laravel Scout.
-- Connecting Scout to Algolia with environment-based configuration.
-- Defining searchable models and index mappings, for example:
-  - `Hostel::class`, `Student::class`, `Application::class`.
-- Implementing search APIs or Inertia controller actions to:
-  - Search hostels by keyword and filters (type, gender, capacity).
-  - Search students and allocations for admin workflows.
-- Building UX on top of the search (typeahead, filters, facets).
+| Model | Index name | Searchable fields |
+|-------|-----------|------------------|
+| `Hostel` | `hostels` | name, location, management_type, gender_scope, description |
+| `Student` | `students` | name, student_no, faculty, year_of_study |
+| `Application` | `applications` | student name/no, hostel name, status, semester |
+| `Allocation` | `allocations` | student name/no, hostel, room, bed, semester, status |
 
-### Quality and tooling
+### Adding `Searchable` to a model
 
-- **Tests**
-  - Unit tests for:
-    - Allocation rules (capacity, gender, first-year logic).
-    - Search behavior (Scout index sync, Algolia queries).
-  - Feature tests for:
-    - Submitting applications.
-    - Running allocation batches.
-    - Searching hostels/students/applications from admin UI.
+```php
+use Laravel\Scout\Searchable;
 
-- **DevOps & infrastructure**
-  - Improvements to GitHub Actions workflows.
-  - Deployment, environment configuration, and secrets management (env vars for Algolia keys, etc.).
-  - Monitoring, logging, and profiling improvements.
+class Hostel extends Model
+{
+    use Searchable;
 
-- **Documentation**
-  - Setup steps for local development.
-  - Search integration docs:
-    - How to get Algolia API keys.
-    - How to run Scout indexing locally.
-  - Architecture notes and diagrams.
+    public function toSearchableArray(): array
+    {
+        return [
+            'id'              => $this->id,
+            'name'            => $this->name,
+            'location'        => $this->location,
+            'management_type' => $this->management_type,
+            'gender_scope'    => $this->gender_scope,
+            'description'     => $this->description,
+        ];
+    }
+}
+```
 
-If you’re not sure where to start, look for Issues labeled `good first issue` or `area:search` (for Algolia/Scout work).
+### Importing indices
 
----
+```bash
+$ sail artisan scout:import "App\Models\Hostel"
+$ sail artisan scout:import "App\Models\Student"
+```
 
-## 5. Coding and review guidelines
+### Public hostel search upgrade path
 
-- **Style & conventions**
-  - Follow Laravel and React conventions (PSR-12, idiomatic React).
-  - Keep controllers thin; encapsulate complex logic in services or actions.
-  - For search, keep index definitions in the models (Scout) and avoid leaking Algolia details into controllers more than necessary.
+`PublicHostelController::index()` currently uses MySQL `LIKE`. When `Hostel` gains `Searchable`,
+replace the `->when('search')` block with:
 
-- **Environment & secrets**
-  - Never commit `.env` or real API keys.
-  - Use `.env.example` to show required environment variables, including:
-    - `ALGOLIA_APP_ID`
-    - `ALGOLIA_SECRET`
-    - `SCOUT_DRIVER`
-  - Document any new env variables in the README.
+```php
+$results = Hostel::search($filters['search'])
+    ->query(fn ($q) => $q->with('rooms')->where('availability_status', '!=', 'closed'))
+    ->get();
+```
 
-- **Tests**
-  - Add or update tests for non-trivial changes.
-  - For Algolia, prefer using Scout’s “array” driver or test doubles in unit tests where possible.
-  - Ensure `phpunit` and frontend tests pass before marking PR as ready.
+Wrap it inside the existing `Cache::remember()` block to prevent Algolia quota burn on
+repeated identical public searches.
 
-- **Pull requests**
-  - Keep PRs focused on one Issue/topic.
-  - Include:
-    - A short summary of the change.
-    - Any schema changes and migrations.
-    - How to test locally.
-  - Avoid large, unrelated refactors in a single PR.
+### Infinite reload loop prevention
 
----
+The public hostel page uses a **debounced, search-only** `useEffect`:
 
-## 6. Reporting issues and suggesting enhancements
+```ts
+useEffect(() => {
+  // isFirstRender guard skips mount-time request
+  const timer = setTimeout(() => router.get(...), 400);
+  return () => clearTimeout(timer);
+}, [search]); // ← ONLY search — never include filters
+```
 
-If you find a bug or have an idea:
-
-1. **Search existing Issues** to avoid duplicates.  
-2. If none exist, open a new Issue with:
-   - A clear title.
-   - Steps to reproduce (for bugs).
-   - Expected vs actual behavior.
-   - Screenshots or logs if helpful.
-3. For feature ideas, include:
-   - The user role (student, warden, affiliated admin, dean).
-   - The problem you’re trying to solve.
-   - Any constraints or examples (e.g., search filters you’d like to see).
-
-Maintainers will triage, label (phase, area, difficulty), and place new Issues onto the Kanban board.
+**Never** put `filters` or `currentFilters` in the dependency array.
+Filter application fires only on explicit button click (`applyFilters()`).
+This prevents the double-render loop that occurs when a server response updates
+`currentFilters` props and triggers another `useEffect` cycle.
 
 ---
 
-## 7. Code of Conduct
+## 5. Coding standards
 
-Please be respectful and constructive.  
-Be kind in reviews, assume good intent, and help others learn.
-
-By participating in this project, you agree to follow the project’s Code of Conduct (if present in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)).
+| Area | Standard |
+|------|---------|
+| PHP | PSR-12, `declare(strict_types=1)` in all new files |
+| Controllers | Thin — delegate domain logic to Services (`AllocationService`, `ApplicationService`) |
+| React | Functional components, TypeScript, no `any` unless unavoidable |
+| CSS | Tailwind utility classes only — no inline `style={}` except dynamic values |
+| Icons | `lucide-react` only — color via `text-accent-500` (gold), `text-brand-700` (green) |
+| Secrets | Never commit `.env`; document new vars in `.env.example` and README |
 
 ---
 
-Happy building!  
-If you’re new and want guidance on where to start, open an Issue titled **“Onboarding help”** and mention your interests (backend, frontend, search/Algolia, DevOps, UX, etc.).
+## 6. Environment variables checklist
+
+When adding a new environment variable:
+1. Add it to `.env.example` with a descriptive placeholder and comment.
+2. Document it in `README.md` under the "Environment variables" section.
+3. Use `config()` in PHP (never `env()` outside `config/` files).
+
+---
+
+## 7. Tests
+
+- Add feature tests for new controllers and services.
+- For Algolia, use `SCOUT_DRIVER=collection` or Scout test doubles in unit tests.
+- Run before marking PR ready:
+
+```bash
+$ sail artisan test
+npm run type-check   # TypeScript strict mode
+```
+
+---
+
+## 8. Reporting issues
+
+1. Search existing issues to avoid duplicates.
+2. Open a new issue with: clear title, steps to reproduce (bugs), expected vs actual behaviour, role affected (student / warden / admin / dean).
+3. Maintainers will triage, label, and place on the board.
+
+---
+
+## 9. Code of Conduct
+
+By contributing you agree to the project's [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+Happy building!

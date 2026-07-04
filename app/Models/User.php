@@ -33,8 +33,8 @@ class User extends Authenticatable
         ];
     }
 
-    public function verifiedRecord(): HasOne
-{
-    return $this->hasOne(VerifiedStudentRecord::class);
-}
+    public function student(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\App\Models\Student::class);
+    }
 }

@@ -133,7 +133,7 @@ export default function Show({ hostel }: ShowProps): React.JSX.Element {
                         //   room_id: room.id,
                         //   room_type: room.room_type,
                         // })}
-                        href="#"
+                        href={route('login')}
                         className="inline-flex items-center gap-2 rounded-full  px-20 bg-accent-500 px-4 py-2 text-sm font-medium text-white transition-all duration-200 group-hover:px-24 hover:bg-accent-600"
                       >
                         Apply Now

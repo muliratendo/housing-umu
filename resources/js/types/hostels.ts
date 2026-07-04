@@ -65,6 +65,15 @@ export type HostelSummary = {
   room_count?: number;
   starting_price?: number | null;
   highest_price?: number | null;
+
+  // Student-portal-only fields (optional so public pages still type-check)
+  available_beds?: number;
+  total_capacity?: number;
+  window_open?: boolean;
+  already_applied?: boolean;
+  requires_renewal?: boolean;
+  can_apply?: boolean;
+  has_active_allocation?: boolean;
 };
 
 export type HostelRoom = {

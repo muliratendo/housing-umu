@@ -1,86 +1,155 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\{AcademicTerm, Bed};
 
 class Hostel extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'name',
         'slug',
         'location',
-        'image_url',
-        'management_type',
-        'availability_status',
-        'gender_scope',
+        'management_type',    // campus-managed / affiliated
+        'campus_location',    // on-campus / off-campus
+        'availability_status',// available / limited / full / closed
+        'gender_scope',       // male / female / mixed
         'is_religious_order',
         'religious_notes',
         'amenities',
         'description',
+        'image_url',
     ];
 
     protected $casts = [
-        'amenities' => 'array',
-        'is_religious_order' => 'boolean',
+        'amenities'         => 'array',
+        'is_religious_order'=> 'boolean',
     ];
 
-    protected $appends = [
-        'management_type_label',
-        'availability_status_label',
-        'gender_scope_label',
-    ];
+    public const TYPE_CAMPUS     = 'campus-managed';
+    public const TYPE_AFFILIATED = 'affiliated';
+    public const CAMPUS_ON       = 'on-campus';
+    public const CAMPUS_OFF      = 'off-campus';
 
-    public const MANAGEMENT_TYPE_LABELS = [
-        'campus-managed' => 'Campus Managed',
-        'affiliated' => 'Affiliated',
-    ];
-
-    public const AVAILABILITY_STATUS_LABELS = [
-        'available' => 'Available',
-        'limited' => 'Limited',
-        'full' => 'Full',
-    ];
-
-    public const GENDER_SCOPE_LABELS = [
-        'male' => 'Male Only',
-        'female' => 'Female Only',
-        'mixed' => 'Mixed',
-    ];
-
+    // ─── Relationships ─────────────────────────────────────────────────────
     public function rooms(): HasMany
     {
         return $this->hasMany(Room::class);
     }
 
-    public function getRouteKeyName(): string
+    public function applications(): HasMany
     {
-        return 'slug';
+        return $this->hasMany(Application::class);
     }
 
-    protected function managementTypeLabel(): Attribute
+    public function allocations(): HasMany
     {
-        return Attribute::make(
-            get: fn (): string => self::MANAGEMENT_TYPE_LABELS[$this->management_type]
-                ?? ucfirst(str_replace('-', ' ', (string) $this->management_type))
-        );
+        return $this->hasMany(Allocation::class);
     }
 
-    protected function availabilityStatusLabel(): Attribute
+    // ─── Accessors ─────────────────────────────────────────────────────────
+    public function getManagementTypeLabelAttribute(): string
     {
-        return Attribute::make(
-            get: fn (): string => self::AVAILABILITY_STATUS_LABELS[$this->availability_status]
-                ?? ucfirst((string) $this->availability_status)
-        );
+        return $this->management_type === self::TYPE_AFFILIATED
+            ? 'Affiliated'
+            : 'Campus-Managed';
     }
 
-    protected function genderScopeLabel(): Attribute
+    public function getAvailabilityStatusLabelAttribute(): string
     {
-        return Attribute::make(
-            get: fn (): string => self::GENDER_SCOPE_LABELS[$this->gender_scope]
-                ?? ucfirst((string) $this->gender_scope)
-        );
+        return match ($this->availability_status) {
+            'limited' => 'Limited Availability',
+            'full'    => 'Fully Occupied',
+            'closed'  => 'Closed',
+            default   => 'Available',
+        };
+    }
+
+    public function getGenderScopeLabelAttribute(): string
+    {
+        return match ($this->gender_scope) {
+            'male'   => 'Male Only',
+            'female' => 'Female Only',
+            default  => 'Mixed',
+        };
+    }
+
+    // ─── Local query scopes ────────────────────────────────────────────────
+    /**
+     * Scope: only hostels that are considered \"active\" for listing.
+     *
+     * - Not soft-deleted (SoftDeletes already handles this)
+     * - availability_status NOT 'closed'
+     */
+    // 'full' hostels appear in the list; the card shows 0 beds free and disables the CTA.
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('availability_status', '!=', 'closed');
+    }
+
+    /**
+     * Scope: campus-managed (on-campus) hostels only.
+     */
+    public function scopeCampus(Builder $query): Builder
+    {
+        return $query
+            ->where('management_type', self::TYPE_CAMPUS)
+            ->where('campus_location', self::CAMPUS_ON);
+    }
+
+    /**
+     * Count available beds across all active rooms for a given term.
+     * For campus-managed hostels this is purely bed-status based.
+     * For affiliated hostels the term context is the same.
+     */
+    public function availableBedCount(int $termId): int
+    {
+        // Use loaded relation if available (avoids N+1 in list view)
+        if ($this->relationLoaded('rooms')) {
+            return $this->rooms
+                ->where('is_active', true)
+                ->flatMap(fn(Room $r) => $r->relationLoaded('beds') ? $r->beds : $r->beds()->get())
+                ->where('status', Bed::STATUS_AVAILABLE)
+                ->count();
+        }
+
+        return $this->rooms()
+            ->where('is_active', true)
+            ->withCount(['beds as available_bed_count' => fn($q) => $q->where('status', Bed::STATUS_AVAILABLE)])
+            ->get()
+            ->sum('available_bed_count');
+    }
+
+    /**
+     * Application window is open when:
+     *  - The term exists and is currently active
+     *  - The hostel's availability_status is not 'closed' or 'full'
+     */
+    public function isApplicationWindowOpen(AcademicTerm $term): bool
+    {
+        if (!$term->isActive()) {
+            return false;
+        }
+
+        return !in_array($this->availability_status, ['closed', 'full'], true);
+    }
+
+    /**
+     * Sum of capacity across all active rooms.
+     * Loaded only when rooms relation is eager-loaded.
+     */
+    public function getTotalCapacityAttribute(): int
+    {
+        return $this->rooms
+            ->where('is_active', true)
+            ->sum('capacity');
     }
 }

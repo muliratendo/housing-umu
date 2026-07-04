@@ -43,21 +43,21 @@ const faqs: FaqItem[] = [
     answer:
       'Yes, you can submit a room change request through the portal. Requests are reviewed by the Dean or Warden support staff and processed subject to availability and campus policy.',
     actionLabel: 'Browse hostels',
-    actionHref: '/hostels',
+    actionHref: '/login',
   },
   {
     question: 'Can I select or link a roommate in my application?',
     answer:
       'In eligible shared rooms, you can optionally invite a roommate and link bookings. Co-linked registrations may require approval flags from the Housing Office before they are confirmed.',
     actionLabel: 'Browse hostels',
-    actionHref: '/hostels',
+    actionHref: '/login',
   },
   {
     question: 'How do I report maintenance issues or emergencies in my room?',
     answer:
       'You can log maintenance issues directly from the housing portal, and urgent safety concerns should be reported through the emergency contacts listed on the Contact & Support page for faster routing.',
     actionLabel: 'Browse hostels',
-    actionHref: '/hostels',
+    actionHref: '/maintenance',
   },
 ];
 

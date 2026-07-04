@@ -1,241 +1,190 @@
-# Booking@UMU – Student Hostel Allocation Platform
+# Housing@UMU — Student Accommodation Management Platform
 
-Booking@UMU is a web-based platform for managing end-to-end student accommodation at the university, from online applications to room/bed allocation and semester-by-semester occupancy tracking. It is designed around the real processes and rules used by Campus Managed Halls of Residence and Affiliated (private) Hostels.
-
-## Project context
-
-At this university, there are two main types of accommodation:
-
-- **Campus Managed Halls of Residence** – on-campus hostels managed by the Campus Warden.
-- **Affiliated Halls of Residence (Private Hostels)** – off-campus but university-affiliated hostels with their own administrators.
-
-The system models the actual business rules, including:
-
-- First-year students must be considered for Campus Managed Halls first. They may only go to affiliated hostels if:
-  - There is no space in campus halls, or
-  - They have explicit permission from the Dean of Students (typically valid for one academic year).
-- Students allocated to Campus Managed Halls are expected to remain there for their entire first academic year (two semesters) unless:
-  - They request to leave,
-  - Their allocation is revoked, or
-  - They are excluded due to disciplinary action.
-- Wardens manage campus halls; affiliated hostel admins manage their own hostels with similar powers:
-  - Allocate students to rooms/beds,
-  - Switch room/bed assignments,
-  - Revoke allocations and manage disciplinary evictions.
-
-Booking@UMU aims to:
-
-- Give **students** a self-service portal to apply for accommodation, see hostel options, and track allocation status.
-- Give **wardens, affiliated admins, the Dean and central staff** a controlled, auditable way to manage capacity, apply policies, and generate reports.
-- Provide **fast, intuitive search** across students, hostels, rooms, and allocations using Laravel Scout and Algolia.
-
-## Core features (MVP)
-
-- Student portal:
-  - Login/register, view profile.
-  - Apply for accommodation per semester with hostel preferences.
-  - View application and allocation status (pending, allocated, waitlisted, rejected, etc.).
-- Admin portals:
-  - Warden and affiliated-hostel admin dashboards with metrics (total beds, occupied, vacant, waitlisted).
-  - CRUD for hostels, rooms, beds, students.
-  - Run allocation processes respecting capacity, gender, and first-year/dean rules.
-  - Manage waitlists, switch rooms, revoke allocations, and track occupancy per semester.
-- Allocation engine:
-  - Enforces:
-    - Capacity constraints at room and hostel level.
-    - One active allocation per bed per semester.
-    - Gender compatibility (hostel/room policy vs student gender).
-    - First-year priority and dean permission rules.
-    - Retention for first-year campus allocations across both semesters of an academic year.
-- Search & discovery (via Scout + Algolia):
-  - Full-text search across students, hostels, rooms, and allocations for admins.
-  - Quick search for hostels and rooms in student-facing flows (e.g., selecting preferences).
-  - Algolia-backed indices for fast, typo-tolerant search and filtering.
-- Reporting & dashboards:
-  - Capacity utilization per hostel and semester.
-  - Counts of allocated vs vacant vs waitlisted students.
-  - Data suitable for board-level discussion and planning.
-
-## High-level architecture
-
-Booking@UMU is a monolithic web application built with Laravel on the backend and React via Inertia on the frontend, using a relational database, Redis for caching, and Laravel Scout + Algolia for search.
-
-### Frontend
-
-- **Stack**
-  - React (via Inertia.js)
-  - Tailwind CSS
-  - shadcn/ui component library
-
-- **Responsibilities**
-  - Provide separate UX for:
-    - Students (applications, status, profile).
-    - Admins/wardens/affiliated admins/dean (dashboards, hostel management, allocations).
-  - Use Inertia to render server-driven pages with SPA-like navigation.
-  - Use Tailwind + shadcn/ui for a consistent, minimal, accessible UI (cards, tables, forms, dialogs).
-  - Integrate Algolia-powered search widgets or custom search UIs that call backend endpoints using Scout queries.
-
-### Backend
-
-- **Framework**
-  - Laravel (with Breeze Inertia/React starter kit, or equivalent).
-
-- **Responsibilities**
-  - Implement domain logic and business rules:
-    - Capacity checks, gender policy checks.
-    - First-year campus priority and dean-permission constraints.
-    - Allocation lifecycle (pending, allocated, waitlisted, checked_in, checked_out, evicted, etc.).
-  - Provide controllers that return Inertia responses for pages and APIs for background jobs if needed.
-  - Implement role-based access control:
-    - `student`, `warden`, `affiliated_admin`, `dean`, `super_admin` roles (e.g., via Spatie Permission).
-  - Expose metrics and lists for dashboards:
-    - Hostels, rooms, beds, allocations, waitlists, maintenance records (future), student details.
-  - Provide search endpoints backed by Laravel Scout:
-    - Models such as `Hostel`, `Room`, `Student`, `Allocation` implement the `Searchable` trait and are indexed in Algolia. 
-    - Admin and student UIs trigger Scout searches for fast filtering and discovery.
-
-### Domain model (core entities)
-
-- **Student**
-  - Linked to `users` table for auth.
-  - Attributes: student number, gender, year of study, faculty, etc.
-  - Relationships: has many Applications and Allocations.
-  - Searchable fields (via Scout/Algolia): name, student number, faculty, year of study (for admin search).
-
-- **Hostel**
-  - Attributes: name, type (`campus_managed` or `affiliated`), gender policy (male, female, mixed), capacity.
-  - Relationships: has many Rooms.
-  - Searchable fields: name, type, gender policy, location.
-
-- **Room**
-  - Attributes: hostel, room identifier, capacity, optional room-level gender override.
-  - Relationships: has many Beds.
-  - Searchable fields: hostel name, room identifier, occupancy status.
-
-- **Bed**
-  - Atomic allocation unit.
-  - Relationships: belongs to Room, has many Allocations.
-  - Mostly used in search via allocations (e.g., “find a student’s bed”).
-
-- **Semester / AcademicTerm**
-  - Attributes: code, name, academic year, start/end dates.
-  - Scopes Applications and Allocations over time.
-
-- **Application**
-  - Links a Student to a Semester and their preferences.
-  - Tracks application status and history.
-  - Searchable fields: status, semester, student identifiers, preferred hostels (for admin queries).
-
-- **Allocation**
-  - Links a Student to a Bed for a Semester.
-  - Tracks allocation lifecycle status and who made changes.
-  - Searchable fields: student identifiers, hostel, room, bed, semester, status (for quick lookup by admin).
-
-### Data storage and constraints
-
-- **Database**
-  - Relational database (MySQL in development/production, can be swapped to PostgreSQL if needed).
-  - Referential integrity via foreign keys between:
-    - Students, hostels, rooms, beds, applications, allocations, semesters.
-  - Indexes for frequently queried relationships:
-    - `hostel_id`, `room_id`, `bed_id`, `semester_id`, `student_id`, `status`.
-
-- **Key constraints**
-  - Capacity:
-    - Room capacity: number of beds.
-    - Hostel capacity: sum of room capacities.
-    - Total allocations per room/hostel per semester must not exceed capacity.
-  - Uniqueness:
-    - Each bed can have at most one active allocation per semester (enforced via unique index and application logic).
-  - Gender:
-    - Student gender must align with hostel/room gender policy, except for hostels/rooms configured as mixed.
-  - First-year & retention rules:
-    - First-year students must be allocated to campus halls first if space exists, and may only go to affiliated hostels with dean permission.
-    - First-year students in campus halls retain their rooms across both semesters of their first academic year unless they leave or are revoked.
-
-### Search architecture (Laravel Scout + Algolia)
-
-- **Laravel Scout**
-  - Provides a driver-based abstraction for full-text search on Eloquent models.
-  - Models that should be searchable (e.g., `Hostel`, `Room`, `Student`, `Allocation`) use the `Searchable` trait.
-  - `toSearchableArray()` is implemented to control which fields are sent to Algolia.
-
-- **Algolia**
-  - Hosted search engine used as the Scout driver for fast, typo-tolerant indexing and querying.
-  - Stores search indices for key models to power:
-    - Admin search bars (find a student by name/number, search hostels/rooms by name or policy).
-    - Student-facing hostel search when selecting preferences.
-  - Algolia credentials (app ID, API key, index names) are stored via environment variables and configured in `config/scout.php`.
-
-- **Frontend integration**
-  - Simple search forms call Laravel controllers, which use Scout to query Algolia and return paginated results.
-  - Optionally, Algolia’s JavaScript helpers or custom React components can be used for richer search UIs.
-
-### Caching and performance
-
-- **Redis**
-  - Used for:
-    - Application cache (e.g., hostel capacity summaries).
-    - Session storage and queues (for background jobs like allocation batches).
-- **Performance profiling**
-  - Local tools like Laravel Telescope and Debugbar for inspecting queries and performance (non-production).
-
-### Observability, security, and deployment
-
-- **Logging & monitoring**
-  - Laravel’s logging system (daily logs).
-  - Health endpoint for monitoring (DB + Redis checks).
-  - External uptime monitoring (e.g., UptimeRobot) pinging the health endpoint.
-  - Optional error tracking integration (e.g., Sentry) for production.
-
-- **Security**
-  - Laravel’s built-in features: CSRF protection, input validation, password hashing.
-  - Cloudflare in front of the app for TLS, basic WAF, and DDoS mitigation.
-
-- **Deployment**
-  - Hosted on Render.com (web service).
-  - Database: managed MySQL (or PostgreSQL) on Render.
-  - CI/CD: GitHub Actions pipeline for tests and deployments.
-
-## Development approach
-
-The project uses a Kanban-style workflow with a GitHub Projects board:
-
-- Columns: Backlog → Ready → In Progress → Review → Done.
-- Work is grouped by phases:
-  1. Repo & core skeleton (Laravel + Inertia + React + Tailwind + shadcn/ui).
-  2. Domain model & CRUD.
-  3. Allocation engine & business rules.
-  4. Dashboards, reporting, observability, search (Scout + Algolia), and polish.
-
-Each card represents a small, testable change (1–2 days of work) to keep progress incremental and visible.
-
-## Getting started (high level)
-
-> Detailed steps will be added as the project evolves.
-
-1. Clone the repository.
-2. Copy `.env.example` to `.env` and configure your local DB and Algolia credentials.
-3. Install PHP and JS dependencies:
-   - `composer install`
-   - `npm install`
-4. Generate app key and run migrations + seeders:
-   - `php artisan key:generate`
-   - `php artisan migrate --seed`
-5. Configure Scout and Algolia:
-   - Set `SCOUT_DRIVER=algolia` and Algolia keys in `.env`. 
-   - Run initial indexing (e.g., `php artisan scout:import "App\\Models\\Hostel"`).
-6. Start dev servers:
-   - `php artisan serve`
-   - `npm run dev`
-7. Open the dev URL in your browser and log in with a seeded user.
+**Housing@UMU** is the official web-based accommodation portal for Uganda Martyrs University, Nkozi.
+It manages the end-to-end student housing lifecycle: online applications, rule-based room allocation,
+semester-scoped occupancy tracking, maintenance requests, and administrative oversight.
 
 ---
 
-For more detailed contribution guidelines and task breakdowns, see [CONTRIBUTING.md](CONTRIBUTING.md) and the project Kanban board.
+## Accommodation types
 
-# Updates
+| Type | Managed by | Student eligibility |
+|------|-----------|---------------------|
+| **Campus-managed Halls of Residence** | Campus Warden | All students; first-years prioritised |
+| **Affiliated Hostels** (private, approved) | Affiliated Hostel Admin | First-years only after campus capacity is exhausted, or with Dean/Warden permission |
 
-### Admin Features
-- Admins can verify students via an interactive CSV review and spreadsheet-like editor
-    This architecture allows admins to upload any Excel/CSV file, converts it into an editable tabular spreadsheet view instantly on the client side, modifies incorrect fields inside text cells, and dispatches the sanitized dataset via a clean Inertia JSON payload.
+---
+
+## Key business rules
+
+- First-year students are allocated to campus halls first. They may only access affiliated hostels if on-campus beds are full, or the Dean of Students grants explicit permission for that academic year.
+- First-year students in campus halls retain their room for the entire first academic year (both semesters) unless the allocation is revoked or an exception is approved by the Warden, Dean, or Super Admin.
+- Gender policies are enforced at both hostel and room level (`male`, `female`, `mixed`). Room-level policy overrides hostel-level (BR-4).
+- One active allocation per bed per semester (unique index + `AllocationService`).
+- One application per student per hostel per academic term (unique index + `ApplicationService`).
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Laravel (PHP), Sail (`$ sail {flag}`) |
+| Frontend | React via Inertia.js |
+| Styling | Tailwind CSS v4, shadcn/ui, lucide-react |
+| Auth | Laravel Breeze + Spatie Permission; Google OAuth (Socialite) + 2FA (PragmaRX Google2FA) planned |
+| Database | MySQL (InnoDB) — ACID transactions, FK constraints, indexed columns |
+| Caching | Redis — dashboard summaries, public hostel index |
+| Search | Laravel Scout + Algolia (admin full-text; public hostel search via server-side Scout queries) |
+| Deployment | Render.com (web service + managed MySQL) |
+| CI/CD | GitHub Actions |
+
+---
+
+## Local development setup
+
+```bash
+# 1. Clone and enter the project
+git clone <repo-url>
+cd housing-umu
+
+# 2. Copy environment file and fill in credentials
+cp .env.example .env
+
+# 3. Install PHP dependencies
+composer install
+
+# 4. Install JS dependencies
+npm install
+
+# 5. Generate application key
+$ sail artisan key:generate
+
+# 6. Run migrations and seed test data
+$ sail artisan migrate --seed
+
+# 7. Configure Algolia search (for admin search features)
+#    Set in .env:
+#      SCOUT_DRIVER=algolia
+#      ALGOLIA_APP_ID=your_app_id
+#      ALGOLIA_SECRET=your_admin_api_key
+#    Import initial indices:
+$ sail artisan scout:import "App\Models\Hostel"
+$ sail artisan scout:import "App\Models\Student"
+
+# 8. Start dev servers
+$ sail up -d
+npm run dev
+```
+
+> **Algolia not configured?** Set `SCOUT_DRIVER=collection` in `.env` for local development.
+> The public hostel list falls back to MySQL `LIKE` queries automatically.
+
+---
+
+## Environment variables (required)
+
+```dotenv
+APP_NAME="Housing@UMU"
+APP_ENV=local
+APP_KEY=
+
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=housing_umu
+DB_USERNAME=sail
+DB_PASSWORD=password
+
+CACHE_DRIVER=redis
+SESSION_DRIVER=redis
+QUEUE_CONNECTION=redis
+
+SCOUT_DRIVER=algolia          # set to 'collection' for local without Algolia
+ALGOLIA_APP_ID=
+ALGOLIA_SECRET=
+
+# Google OAuth (Socialite) — set after provider registration
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI="${APP_URL}/auth/google/callback"
+```
+
+---
+
+## Architecture overview
+
+```
+MySQL (InnoDB)
+  └─ Eloquent Models
+       (Student, Hostel, Room, Bed, Application, Allocation, AcademicTerm, MaintenanceRequest)
+       └─ Services (AllocationService, ApplicationService)
+            └─ Controllers (enforce business rules, build Inertia props)
+                 └─ Inertia::render() → typed props
+                      └─ React Pages (Tailwind + shadcn/ui)
+                           └─ Shared Components (StatusPill, KpiCard, HostelFiltersPanel, etc.)
+
+Redis:  dashboard cache (student_dashboard:{student_id}:{term_id}, TTL 5 min)
+        public hostel index (public_hostels:index:{md5(filters)}, TTL 10 min)
+        tagged as ['public_hostels'] for atomic flush via HousingUnitObserver
+
+Algolia: admin full-text search (Hostel, Student, Allocation indices)
+         public hostel search upgrades to Scout::search() when Searchable trait is added
+```
+
+---
+
+## Core domain models
+
+| Model | Key attributes | Relationships |
+|-------|---------------|---------------|
+| `Student` | student_no, gender, year_of_study, faculty | hasMany Applications, Allocations |
+| `Hostel` | name, slug, management_type, gender_scope, is_religious_order | hasMany Rooms |
+| `Room` | name, room_type, capacity, bed_count, gender_scope (override) | belongsTo Hostel |
+| `AcademicTerm` | code, semester, academic_year_id, application_window_open/close | scopes Applications, Allocations |
+| `Application` | status, notes, preferences (JSON), waitlist_position | belongsTo Student, Hostel, AcademicTerm |
+| `Allocation` | status, bed_id, checked_in_at, checked_out_at | belongsTo Student, Hostel, Room, AcademicTerm |
+| `MaintenanceRequest` | subject, description, status, priority | belongsTo Student, Allocation |
+
+---
+
+## Allocation status state machine
+
+```
+NOT_APPLIED → [submit] → PENDING
+PENDING     → [bed found] → ALLOCATED
+PENDING     → [no bed] → WAITLISTED
+PENDING     → [admin rejects] → REJECTED
+ALLOCATED   → [student confirms] → CHECKED_IN
+ALLOCATED   → [admin cancels] → REJECTED
+CHECKED_IN  → [checkout / term end] → CHECKED_OUT
+CHECKED_OUT → [new term] → NOT_APPLIED
+WAITLISTED  → [bed freed] → ALLOCATED
+```
+
+---
+
+## Reusable overlay components
+
+| Component | Path | Where to use |
+|-----------|------|-------------|
+| `<BackToTop />` | `resources/js/components/BackToTop.tsx` | Already injected by `GuestLayout` (public pages) and recommended in `AuthenticatedLayout` for long admin/student pages |
+| `<ScrollDownIndicator />` | `resources/js/components/ScrollDownIndicator.tsx` | Import per-page inside hero sections: `Welcome.tsx`, `HowItWorks.tsx`, `Hostels/Show.tsx` hero area |
+
+---
+
+## Developer docs
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Kanban workflow, phases, PR guidelines, Algolia setup
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Community standards and enforcement
+
+---
+
+## Deployment (Render.com)
+
+1. Connect the GitHub repo to a Render Web Service.
+2. Set all required environment variables in the Render dashboard.
+3. Build command: `composer install --no-dev && npm ci && npm run build && php artisan migrate --force`
+4. Start command: `php artisan serve --host=0.0.0.0 --port=$PORT`
+5. Add a Render managed MySQL database and link via `DATABASE_URL`.
+6. Add a Redis instance (Render or Upstash) and set `REDIS_URL`.

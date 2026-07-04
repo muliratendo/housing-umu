@@ -1,297 +1,312 @@
 <?php
+// File: database/seeders/DatabaseSeeder.php  REPLACE existing.
+//
+// Root fix: removed bed_count + price_per_semester from all hostel inserts.
+// Added campus_location field to hostels.
+// 16 canonical hostels per business spec.
+// Rooms: ~40% single (UGX 450,000 | capacity=1), ~60% double (UGX 900,000 | capacity=2).
+// Beds created by Room::syncBeds() — no manual bed insert needed.
+// Affiliated on-campus (Luwum): non-sc 1,268,500 | sc 1,775,900 | apt 2,029,600 (single).
+// Affiliated off-campus: ±5–8% variation from base 1,150,000 (nsc) / 1,600,000 (sc).
 
 namespace Database\Seeders;
 
-use App\Models\Hostel;
-use App\Models\Room;
-use App\Models\User;
+use App\Models\{Bed, Hostel, Room, Student, User};
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     *
-     * Major goals of this seeder:
-     * 1. Seed roles and permissions first.
-     * 2. Seed key system users with fixed emails for easy login/testing.
-     * 3. Seed sample students for development.
-     * 4. Seed public hostel listing data using canonical raw values.
-     * 5. Make hostel seed data idempotent so rerunning db:seed does not create duplicates.
-     */
     public function run(): void
     {
-        // =========================================================================
-        // 1. Seed roles / permissions first because user-role assignment depends on it
-        // =========================================================================
-        $this->call([
-            RolePermissionSeeder::class,
+        $this->call([RolePermissionSeeder::class]);
+        $this->seedAccounts();
+        $this->seedStudents();
+        $this->seedHostels();
+    }
+
+    private function seedAccounts(): void
+    {
+        $accounts = [
+            ['email'=>'superadmin@umu.ac.ug', 'name'=>'UMU Super System Admin',           'role'=>'super_admin'],
+            ['email'=>'dean@umu.ac.ug',        'name'=>'Dr. John Bosco (Dean)',             'role'=>'dean'],
+            ['email'=>'warden@umu.ac.ug',      'name'=>'Sister Mary Florence (Warden)',    'role'=>'warden'],
+            ['email'=>'affiliatedhosteladmin@umu.ac.ug','name'=>'Mr. Mukasa Ronald', 'role'=>'affiliated_admin'],
+        ];
+        foreach ($accounts as $a) {
+            User::updateOrCreate(['email'=>$a['email']], [
+                'name'=>$a['name'], 'password'=>Hash::make('password'), 'email_verified_at'=>now(),
+            ])->syncRoles($a['role']);
+        }
+    }
+
+    private function seedStudents(): void
+    {
+        $user = User::updateOrCreate(['email' => 'student@umu.ac.ug'], [
+            'name'              => 'Namubiru Sarah',
+            'password'          => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $user->syncRoles('student');
+
+        Student::updateOrCreate(['user_id' => $user->id], [
+            'student_number' => 'STU-00001',
+            'year_of_study'  => 1,
+            'gender'         => 'female',
+            'programme'        => 'Bachelor of Computer Science',
         ]);
 
-        // =========================================================================
-        // 2. Seed core named accounts and assign roles
-        //    updateOrCreate makes the seeder safe to rerun
-        // =========================================================================
+        User::factory(20)->create()->each(function ($u) {
+            $u->syncRoles('student');
 
-        // Super Admin
-        $superAdmin = User::updateOrCreate(
-            ['email' => 'superadmin@umu.ac.ug'],
-            [
-                'name' => 'UMU Super System Admin',
-                'password' => Hash::make('password'),
-                'email_verified_at' => now(),
-            ]
-        );
-        $superAdmin->assignRole('super_admin');
-
-        // Dean of Students
-        $dean = User::updateOrCreate(
-            ['email' => 'dean@umu.ac.ug'],
-            [
-                'name' => 'Dr. John Bosco (Dean)',
-                'password' => Hash::make('password'),
-                'email_verified_at' => now(),
-            ]
-        );
-        $dean->assignRole('dean');
-
-        // Campus Warden
-        $warden = User::updateOrCreate(
-            ['email' => 'warden@umu.ac.ug'],
-            [
-                'name' => 'Sister Mary Florence (Warden)',
-                'password' => Hash::make('password'),
-                'email_verified_at' => now(),
-            ]
-        );
-        $warden->assignRole('warden');
-
-        // Affiliated Hostel Admin
-        $landlord = User::updateOrCreate(
-            ['email' => 'affiliatedhosteladmin@umu.ac.ug'],
-            [
-                'name' => 'Mr. Mukasa Ronald',
-                'password' => Hash::make('password'),
-                'email_verified_at' => now(),
-            ]
-        );
-        $landlord->assignRole('affiliated_admin');
-
-        // =========================================================================
-        // 3. Seed a fixed test student + bulk demo students
-        // =========================================================================
-
-        // Fixed student account for QA / browser login
-        $testStudent = User::updateOrCreate(
-            ['email' => 'student@umu.ac.ug'],
-            [
-                'name' => 'Namubiru Sarah',
-                'password' => Hash::make('password'),
-                'email_verified_at' => now(),
-            ]
-        );
-        $testStudent->assignRole('student');
-
-        // Seed demo students only if you want fresh development users.
-        // Using factory()->create()->each(...) is a standard approach for assigning roles after creation.
-        User::factory(20)->create()->each(function ($user) {
-            $user->assignRole('student');
+            Student::updateOrCreate(['user_id' => $u->id], [
+                'student_number' => 'STU-' . str_pad($u->id, 5, '0', STR_PAD_LEFT),
+                'year_of_study'  => fake()->numberBetween(1, 4),
+                'gender'         => fake()->randomElement(['male', 'female']),
+                'programme'        => fake()->randomElement([
+                    'Bachelor of Arts', 'Bachelor of Science',
+                    'Bachelor of Commerce', 'Bachelor of Education',
+                ]),
+            ]);
         });
+    }
 
-        // =========================================================================
-        // 4. Seed public hostel listing data
-        //    IMPORTANT: use canonical raw values only
-        //
-        //     Canonical raw values:
-        //     - room_type: self-contained | non-self-contained | apartment
-        //     - management_type: campus-managed | affiliated
-        //     - availability_status: available | limited | full
-        //     - gender_scope: male | female | mixed
-        //
-        //     Note:
-        //     - room_type_labels should be derived from Room accessors / transformers.
-        //     - room_types should be derived from related rooms, not stored directly.
-        //     - is_umu_approved is intentionally omitted.
-        //
-       $hostels = [
-           [
-               'hostel' => [
-                   'name' => 'St. Augustine Clergy Wing',
-                   'slug' => Str::slug('St. Augustine Clergy Wing'),
-                   'location' => 'Near UMU Main Gate, Nkozi',
-                   'price_per_semester' => 850000,
-                   'bed_count' => 1,
-                   'management_type' => 'affiliated',
-                   'availability_status' => 'limited',
-                   'gender_scope' => 'male',
-                   'is_religious_order' => true,
-                   'religious_notes' => 'Reserved strictly for ordained brothers and seminarians attending theological faculties.',
-                   'amenities' => ['Private Kitchen', 'Study Desk', 'Solar Power Backup'],
-                   'description' => 'A quiet clergy-focused affiliated hostel suitable for theological students and religious residents.',
-                   'image_url' => null,
-               ],
-               'rooms' => [
-                   [
-                       'name' => 'Clergy Studio A1',
-                       'slug' => Str::slug('St. Augustine Clergy Wing Clergy Studio A1'),
-                       'room_type' => 'apartment',
-                       'capacity' => 1,
-                       'bed_count' => 1,
-                       'price_per_semester' => 850000,
-                       'availability_status' => 'limited',
-                       'gender_scope' => 'male',
-                       'description' => 'Private single-occupancy clergy apartment with study space.',
-                       'amenities' => ['Private Kitchen', 'Study Desk', 'Solar Power Backup'],
-                       'image_url' => null,
-                   ],
-                   [
-                       'name' => 'Clergy Studio A2',
-                       'slug' => Str::slug('St. Augustine Clergy Wing Clergy Studio A2'),
-                       'room_type' => 'apartment',
-                       'capacity' => 1,
-                       'bed_count' => 1,
-                       'price_per_semester' => 850000,
-                       'availability_status' => 'available',
-                       'gender_scope' => 'male',
-                       'description' => 'Quiet clergy room suited for focused academic and spiritual formation.',
-                       'amenities' => ['Private Kitchen', 'Study Desk', 'Solar Power Backup'],
-                       'image_url' => null,
-                   ],
-               ],
-           ],
-           [
-               'hostel' => [
-                   'name' => 'Our Lady of Africa Convent Hostel',
-                   'slug' => Str::slug('Our Lady of Africa Convent Hostel'),
-                   'location' => 'Nkozi Trading Centre',
-                   'price_per_semester' => 750000,
-                   'bed_count' => 1,
-                   'management_type' => 'affiliated',
-                   'availability_status' => 'available',
-                   'gender_scope' => 'female',
-                   'is_religious_order' => true,
-                   'religious_notes' => 'Managed by the Sisters of Mary. Strict curfew active past 9:00 PM for all residents.',
-                   'amenities' => ['Attached Bathroom', 'Self-Contained', 'Secure Fencing'],
-                   'description' => 'A women-only affiliated hostel with a structured environment and enhanced security.',
-                   'image_url' => null,
-               ],
-               'rooms' => [
-                   [
-                       'name' => 'Convent Suite B1',
-                       'slug' => Str::slug('Our Lady of Africa Convent Hostel Convent Suite B1'),
-                       'room_type' => 'self-contained',
-                       'capacity' => 1,
-                       'bed_count' => 1,
-                       'price_per_semester' => 750000,
-                       'availability_status' => 'available',
-                       'gender_scope' => 'female',
-                       'description' => 'Single self-contained room with attached bathroom.',
-                       'amenities' => ['Attached Bathroom', 'Secure Fencing'],
-                       'image_url' => null,
-                   ],
-                   [
-                       'name' => 'Convent Suite B2',
-                       'slug' => Str::slug('Our Lady of Africa Convent Hostel Convent Suite B2'),
-                       'room_type' => 'self-contained',
-                       'capacity' => 1,
-                       'bed_count' => 1,
-                       'price_per_semester' => 780000,
-                       'availability_status' => 'limited',
-                       'gender_scope' => 'female',
-                       'description' => 'Private women-only room within the convent hostel compound.',
-                       'amenities' => ['Attached Bathroom', 'Secure Fencing', 'Study Desk'],
-                       'image_url' => null,
-                   ],
-               ],
-           ],
-           [
-               'hostel' => [
-                   'name' => 'Martyrs Executive Villa',
-                   'slug' => Str::slug('Martyrs Executive Villa'),
-                   'location' => 'Kayabwe Highway Road, Nkozi',
-                   'price_per_semester' => 600000,
-                   'bed_count' => 2,
-                   'management_type' => 'campus-managed',
-                   'availability_status' => 'available',
-                   'gender_scope' => 'mixed',
-                   'is_religious_order' => false,
-                   'religious_notes' => null,
-                   'amenities' => ['Shared Kitchen', 'Wi-Fi Network', 'Balcony Space'],
-                   'description' => 'A practical campus-managed option with shared-room occupancy and student-friendly pricing.',
-                   'image_url' => null,
-               ],
-               'rooms' => [
-                   [
-                       'name' => 'Executive Shared C1',
-                       'slug' => Str::slug('Martyrs Executive Villa Executive Shared C1'),
-                       'room_type' => 'non-self-contained',
-                       'capacity' => 2,
-                       'bed_count' => 2,
-                       'price_per_semester' => 600000,
-                       'availability_status' => 'available',
-                       'gender_scope' => 'mixed',
-                       'description' => 'Shared room with access to common washrooms and kitchen.',
-                       'amenities' => ['Shared Kitchen', 'Wi-Fi Network', 'Balcony Space'],
-                       'image_url' => null,
-                   ],
-                   [
-                       'name' => 'Executive Shared C2',
-                       'slug' => Str::slug('Martyrs Executive Villa Executive Shared C2'),
-                       'room_type' => 'non-self-contained',
-                       'capacity' => 2,
-                       'bed_count' => 2,
-                       'price_per_semester' => 620000,
-                       'availability_status' => 'limited',
-                       'gender_scope' => 'mixed',
-                       'description' => 'Double-occupancy room with strong access to academic facilities.',
-                       'amenities' => ['Shared Kitchen', 'Wi-Fi Network'],
-                       'image_url' => null,
-                   ],
-                   [
-                       'name' => 'Executive Flat C3',
-                       'slug' => Str::slug('Martyrs Executive Villa Executive Flat C3'),
-                       'room_type' => 'apartment',
-                       'capacity' => 1,
-                       'bed_count' => 1,
-                       'price_per_semester' => 900000,
-                       'availability_status' => 'full',
-                       'gender_scope' => 'mixed',
-                       'description' => 'Private apartment-style room in the same campus-managed complex.',
-                       'amenities' => ['Balcony Space', 'Study Desk', 'Wi-Fi Network'],
-                       'image_url' => null,
-                   ],
-               ],
-           ],
-       ];
+    private function seedHostels(): void
+    {
+        foreach ($this->hostelCatalogue() as $entry) {
+            $hostel = Hostel::updateOrCreate(
+                ['slug' => $entry['hostel']['slug']],
+                collect($entry['hostel'])->except('slug')->toArray()
+            );
+            foreach ($entry['rooms'] as $roomData) {
+                $room = Room::updateOrCreate(
+                    ['hostel_id' => $hostel->id, 'slug' => $roomData['slug']],
+                    collect($roomData)->except('slug')->toArray() + ['hostel_id' => $hostel->id]
+                );
+                $room->syncBeds();
+            }
+        }
+    }
 
-       foreach ($hostels as $entry) {
-           $hostel = Hostel::updateOrCreate(
-               ['slug' => $entry['hostel']['slug']],
-               $entry['hostel']
-           );
+    private function hostelCatalogue(): array
+    {
+        return [
+            // A1 Male, on-campus, campus-managed
+            ['hostel'=>['name'=>"Blessed Charles Lwanga Hall",'slug'=>'blessed-charles-lwanga-hall',
+                'location'=>'UMU Main Campus, Nkozi','management_type'=>'campus-managed','campus_location'=>'on-campus',
+                'availability_status'=>'available','gender_scope'=>'male','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Common Room','Water Supply','Security Guard'],'description'=>'Premier male on-campus hall.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('CLH','male',14)],
 
-           foreach ($entry['rooms'] as $roomData) {
-               Room::updateOrCreate(
-                   [
-                       'hostel_id' => $hostel->id,
-                       'slug' => $roomData['slug'],
-                   ],
-                   [
-                       'name' => $roomData['name'],
-                       'room_type' => $roomData['room_type'],
-                       'capacity' => $roomData['capacity'],
-                       'bed_count' => $roomData['bed_count'],
-                       'price_per_semester' => $roomData['price_per_semester'],
-                       'availability_status' => $roomData['availability_status'],
-                       'gender_scope' => $roomData['gender_scope'],
-                       'description' => $roomData['description'],
-                       'amenities' => $roomData['amenities'],
-                       'image_url' => $roomData['image_url'],
-                   ]
-               );
-           }
-       }
+            // A2 Male, on-campus, campus-managed
+            ['hostel'=>['name'=>"St. Kizito Men's Hall",'slug'=>'st-kizito-mens-hall',
+                'location'=>'UMU Main Campus, Nkozi','management_type'=>'campus-managed','campus_location'=>'on-campus',
+                'availability_status'=>'available','gender_scope'=>'male','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Study Room','Water Supply','Security Guard'],'description'=>"Named after St. Kizito.",'image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('SKH','male',12)],
+
+            // B1 Female, on-campus, campus-managed
+            ['hostel'=>['name'=>'Our Lady of Lourdes Hall','slug'=>'our-lady-of-lourdes-hall',
+                'location'=>'UMU Main Campus, Nkozi','management_type'=>'campus-managed','campus_location'=>'on-campus',
+                'availability_status'=>'available','gender_scope'=>'female','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Common Room','Water Supply','Laundry Area'],'description'=>'Large female campus hall.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('LOU','female',14)],
+
+            // B2 Female, on-campus, campus-managed
+            ['hostel'=>['name'=>"St. Scholastica Women's Hall",'slug'=>'st-scholastica-womens-hall',
+                'location'=>'UMU Main Campus, Nkozi','management_type'=>'campus-managed','campus_location'=>'on-campus',
+                'availability_status'=>'available','gender_scope'=>'female','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Study Room','Water Supply','Secure Gate'],'description'=>'Benedictine-named women hall.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('SCH','female',12)],
+
+            // B3 Female, on-campus, campus-managed
+            ['hostel'=>['name'=>'Blessed Virgin Mary Hall','slug'=>'blessed-virgin-mary-hall',
+                'location'=>'UMU Main Campus, Nkozi','management_type'=>'campus-managed','campus_location'=>'on-campus',
+                'availability_status'=>'available','gender_scope'=>'female','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Common Room','Water Supply','Chapel Proximity'],'description'=>'Female hall near the chapel.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('BVM','female',12)],
+
+            // B4 Female, on-campus, campus-managed
+            ['hostel'=>['name'=>"St. Jude Women's Annex",'slug'=>'st-jude-womens-annex',
+                'location'=>'UMU Main Campus, Nkozi','management_type'=>'campus-managed','campus_location'=>'on-campus',
+                'availability_status'=>'available','gender_scope'=>'female','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Common Room','Water Supply','Garden Space'],'description'=>'Smaller female annex.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('SJA','female',10)],
+
+            // B5 Female, on-campus, campus-managed — NUNS
+            ['hostel'=>['name'=>'Sisters of Mary Convent Residence','slug'=>'sisters-of-mary-convent-residence',
+                'location'=>'UMU Main Campus, Nkozi (Convent Wing)','management_type'=>'campus-managed','campus_location'=>'on-campus',
+                'availability_status'=>'limited','gender_scope'=>'female','is_religious_order'=>true,
+                'religious_notes'=>'Reserved for Catholic sisters and nuns. Managed by Campus Warden + Convent Superior.',
+                'amenities'=>['Private Chapel','Secure Compound','Garden','Study Desks'],'description'=>'Female religious residence.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('SMC','female',8,true)],
+
+            // C1 Male, off-campus, campus-managed, near gate
+            ['hostel'=>['name'=>"Gate View Men's Lodge",'slug'=>'gate-view-mens-lodge',
+                'location'=>'Near UMU Main Gate, Nkozi','management_type'=>'campus-managed','campus_location'=>'off-campus',
+                'availability_status'=>'available','gender_scope'=>'male','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Security Guard','Water Supply','Notice Board'],'description'=>'Off-campus male hall near gate.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('GVM','male',12)],
+
+            // C2 Male, off-campus, campus-managed, near gate
+            ['hostel'=>['name'=>'Nkozi Gate Quarters (Male)','slug'=>'nkozi-gate-quarters-male',
+                'location'=>'Near UMU Main Gate, Nkozi','management_type'=>'campus-managed','campus_location'=>'off-campus',
+                'availability_status'=>'available','gender_scope'=>'male','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Security Guard','Water Supply'],'description'=>'Second campus-managed male option near gate.','image_url'=>null],
+             'rooms'=>$this->campusManagedRooms('NGQ','male',10)],
+
+            // D1 Mixed(separate), off-campus, campus-managed, Nkozi Town
+            ['hostel'=>['name'=>'Nkozi Town Student Residence','slug'=>'nkozi-town-student-residence',
+                'location'=>'Nkozi Town Centre','management_type'=>'campus-managed','campus_location'=>'off-campus',
+                'availability_status'=>'available','gender_scope'=>'mixed','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Separate Male/Female Wings','Water Supply','Security'],'description'=>'Mixed separate-wing campus-managed hostel in Nkozi Town.','image_url'=>null],
+             'rooms'=>array_merge($this->campusManagedRooms('NTR-M','male',6), $this->campusManagedRooms('NTR-F','female',6))],
+
+            // E1 Mixed(separate), on-campus, affiliated (Luwum Hall)
+            ['hostel'=>['name'=>'Archbishop Luwum Hall','slug'=>'archbishop-luwum-hall',
+                'location'=>'UMU Main Campus, Nkozi (Affiliated Block)','management_type'=>'affiliated','campus_location'=>'on-campus',
+                'availability_status'=>'available','gender_scope'=>'mixed','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Self-Contained Options','Separate Wings','Wi-Fi','Backup Power'],'description'=>'Only affiliated hostel on campus. Premium room tiers.','image_url'=>null],
+             'rooms'=>$this->affiliatedOnCampusRooms('ALH')],
+
+            // F1–F5 Mixed, off-campus, affiliated
+            ['hostel'=>['name'=>'Martyrs Lodge Nkozi','slug'=>'martyrs-lodge-nkozi',
+                'location'=>'Kayabwe Road, Nkozi','management_type'=>'affiliated','campus_location'=>'off-campus',
+                'availability_status'=>'available','gender_scope'=>'mixed','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Wi-Fi','Shared Kitchen','Backup Power'],'description'=>'Mixed affiliated off-campus hostel.','image_url'=>null],
+             'rooms'=>$this->affiliatedOffCampusRooms('MLN',0)],
+
+            ['hostel'=>['name'=>'Green Valley Student Flats','slug'=>'green-valley-student-flats',
+                'location'=>'Nkozi Trading Centre','management_type'=>'affiliated','campus_location'=>'off-campus',
+                'availability_status'=>'available','gender_scope'=>'mixed','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Self-Contained','Water Tank','Security Fence'],'description'=>'Modern student flats in Nkozi.','image_url'=>null],
+             'rooms'=>$this->affiliatedOffCampusRooms('GVF',1)],
+
+            ['hostel'=>['name'=>'Hilltop Student Residences','slug'=>'hilltop-student-residences',
+                'location'=>'Nkozi Hill, Off Kampala Road','management_type'=>'affiliated','campus_location'=>'off-campus',
+                'availability_status'=>'available','gender_scope'=>'mixed','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Wi-Fi','Borehole Water','Scenic View','Security'],'description'=>'Elevated location with scenic views.','image_url'=>null],
+             'rooms'=>$this->affiliatedOffCampusRooms('HTS',2)],
+
+            ['hostel'=>['name'=>'Lake Breeze Hostels','slug'=>'lake-breeze-hostels',
+                'location'=>'Nkozi-Masaka Road','management_type'=>'affiliated','campus_location'=>'off-campus',
+                'availability_status'=>'limited','gender_scope'=>'mixed','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Common Kitchen','Solar Power','Secure Parking'],'description'=>'Affordable affiliated option with solar backup.','image_url'=>null],
+             'rooms'=>$this->affiliatedOffCampusRooms('LBH',3)],
+
+            ['hostel'=>['name'=>'Nkozi Gardens Student Hostel','slug'=>'nkozi-gardens-student-hostel',
+                'location'=>'Opposite UMU Gate, Nkozi','management_type'=>'affiliated','campus_location'=>'off-campus',
+                'availability_status'=>'available','gender_scope'=>'mixed','is_religious_order'=>false,'religious_notes'=>null,
+                'amenities'=>['Garden Compound','Backup Generator','Security'],'description'=>'Garden-style compound across from the gate.','image_url'=>null],
+             'rooms'=>$this->affiliatedOffCampusRooms('NGS',4)],
+        ];
+    }
+
+    /**
+     * Campus-managed rooms: ~40% single (capacity=1, price=450,000), ~60% double (capacity=2, price=900,000).
+     * Religious-order hostels use all-single.
+     */
+    private function campusManagedRooms(string $pfx, string $gender, int $count, bool $allSingle = false): array
+    {
+        $rooms       = [];
+        $singleCount = $allSingle ? $count : (int) floor($count * 0.4);
+        $doubleCount = $count - $singleCount;
+
+        for ($i = 1; $i <= $singleCount; $i++) {
+            $name    = "{$pfx}-S{$i}";
+            $rooms[] = $this->roomRow($name, Str::slug("{$pfx}-S{$i}"), 'non-self-contained', 1, 450000, $gender, "Single room {$name}.");
+        }
+        for ($i = 1; $i <= $doubleCount; $i++) {
+            $name    = "{$pfx}-D{$i}";
+            $rooms[] = $this->roomRow($name, Str::slug("{$pfx}-D{$i}"), 'non-self-contained', 2, 900000, $gender, "Double room {$name}. Each bed UGX 450,000.");
+        }
+        return $rooms;
+    }
+
+    /**
+     * Archbishop Luwum Hall — affiliated on-campus tiers.
+     * non-sc single 1,268,500 | sc single 1,775,900 | apt single 2,029,600
+     * Double: same price, per-bed = price/2 via accessor.
+     */
+    private function affiliatedOnCampusRooms(string $pfx): array
+    {
+        $rooms = [];
+        $defs  = [
+            // [type,               cap, price,   gender,   count]
+            ['non-self-contained', 1, 1268500, 'male',    4],
+            ['non-self-contained', 2, 1268500, 'male',    3],
+            ['self-contained',     1, 1775900, 'female',  3],
+            ['self-contained',     2, 1775900, 'female',  2],
+            ['apartment',          1, 2029600, 'mixed',   2],
+        ];
+        foreach ($defs as [$type, $cap, $price, $gender, $cnt]) {
+            $tc = match($type) { 'self-contained'=>'SC', 'apartment'=>'APT', default=>'NSC' };
+            $cc = $cap === 1 ? 'S' : 'D';
+            for ($i = 1; $i <= $cnt; $i++) {
+                $name    = "{$pfx}-{$tc}-{$cc}{$i}";
+                $rooms[] = $this->roomRow($name, Str::slug($name), $type, $cap, $price, $gender,
+                    "{$type} ".($cap===1?'single':'double')." room. UGX ".number_format($price).".");
+            }
+        }
+        return $rooms;
+    }
+
+    /**
+     * Affiliated off-campus: ±5–8% variation from base pricing.
+     * non-sc base ~1,150,000 | sc base ~1,600,000
+     */
+    private function affiliatedOffCampusRooms(string $pfx, int $variant): array
+    {
+        $multipliers = [1.00, 1.05, 0.97, 1.08, 0.95];
+        $m           = $multipliers[$variant];
+        $baseNsc     = (int) round(1150000 * $m);
+        $baseSc      = (int) round(1600000 * $m);
+
+        $rooms = [];
+        $defs  = [
+            ['non-self-contained', 1, $baseNsc, 4],
+            ['non-self-contained', 2, $baseNsc, 4],
+            ['self-contained',     1, $baseSc,  2],
+            ['self-contained',     2, $baseSc,  2],
+        ];
+        foreach ($defs as [$type, $cap, $price, $cnt]) {
+            $tc = $type === 'self-contained' ? 'SC' : 'NSC';
+            $cc = $cap === 1 ? 'S' : 'D';
+            for ($i = 1; $i <= $cnt; $i++) {
+                $name    = "{$pfx}-{$tc}-{$cc}{$i}";
+                $rooms[] = $this->roomRow($name, Str::slug($name), $type, $cap, $price, 'mixed',
+                    "{$type} ".($cap===1?'single':'double')." room. UGX ".number_format($price).".");
+            }
+        }
+        return $rooms;
+    }
+
+    private function roomRow(string $name, string $slug, string $type, int $cap, int $price, string $gender, string $desc): array
+    {
+        return [
+            'name'               => $name,
+            'slug'               => $slug,
+            'room_number'         => $name,   // ← ADD THIS. e.g. "CLH-S1", "BVM-D3"
+            'room_type'          => $type,
+            'capacity'           => $cap,
+            'bed_count'          => $cap,
+            'price_per_semester' => $price,
+            'availability_status'=> 'available',
+            'gender_scope'       => $gender,
+            'description'        => $desc,
+            'amenities'          => $this->defaultAmenities($type),
+            'image_url'          => null,
+            'is_active' => true,   // ← explicit, matches DB default purely for clarity
+        ];
+    }
+
+    private function defaultAmenities(string $type): array
+    {
+        return match($type) {
+            'self-contained' => ['Attached Bathroom','Study Desk','Wardrobe','Wi-Fi'],
+            'apartment'      => ['Private Kitchen','Attached Bathroom','Study Desk','Wi-Fi','Balcony'],
+            default          => ['Study Desk','Wardrobe','Shared Bathroom'],
+        };
     }
 }

@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+      "types": ["ziggy-js"],
       "target": "esnext",
       "module": "esnext",
       "moduleResolution": "bundler",
