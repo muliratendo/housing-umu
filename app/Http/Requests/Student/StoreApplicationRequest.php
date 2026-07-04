@@ -1,7 +1,7 @@
-// app/Http/Requests/Student/StoreApplicationRequest.php
-
 <?php
 declare(strict_types=1);
+// app/Http/Requests/Student/StoreApplicationRequest.php
+
 namespace App\Http\Requests\Student;
 
 use App\Models\Hostel;
