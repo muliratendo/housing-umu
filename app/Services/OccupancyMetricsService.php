@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Schema;
 use App\Models\AcademicTerm;
 use App\Models\Allocation;
 use App\Models\Room;
@@ -57,6 +58,12 @@ final class OccupancyMetricsService
 
     private function compute(): array
     {
+        // Avoid hard crash if migration hasn’t run yet
+        if (! Schema::hasTable('academic_terms')) {
+            // Always return an array, not null
+            return $this->emptySnapshot();
+        }
+
         // 1. Resolve the most recent term that had an allocation window.
         //    We pick by latest application_window_open to match the requirement:
         //    "most recently opened and/or closed windows or most recent allocation round".

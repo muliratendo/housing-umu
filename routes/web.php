@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\OccupancyMetricsService;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicHostelController;
 use App\Http\Controllers\Student\{
@@ -22,7 +23,7 @@ use Inertia\Inertia;
 | 1. PUBLIC UI ROUTES (Unauthenticated Space)
 |--------------------------------------------------------------------------
 */
-Route::get('/', function (\App\Services\OccupancyMetricsService $occupancy) {
+Route::get('/', function (OccupancyMetricsService $occupancy) {
     return Inertia::render('Public/Welcome', [
         'canLogin'          => Route::has('login'),
         'canRegister'       => Route::has('register'),
