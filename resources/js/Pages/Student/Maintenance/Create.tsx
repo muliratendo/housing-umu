@@ -54,9 +54,9 @@ export default function MaintenanceCreate({ allocation, currentTerm }: Props) {
     <AuthenticatedLayout
       title="New Maintenance Request"
       breadcrumbs={[
+        { label: 'Dashboard', href: route('student.dashboard') },
         { label: 'Maintenance', href: route('student.maintenance.index') },
-        { label: 'New Request', href: '' },
-        { label: '', href: '' },
+        { label: 'New Request' },
       ]}
     >
       <Head title="New Maintenance Request – Housing@UMU" />

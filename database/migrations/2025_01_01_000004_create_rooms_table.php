@@ -14,7 +14,8 @@ return new class extends Migration {
             $table->string('name', 100);
             $table->string('slug', 160)->unique();
             $table->string('room_number', 20)->nullable();
-            $table->string('room_type', 30)->default('non-self-contained');
+            $table->string('floor', 20)->nullable();
+            $table->string('room_type', 30)->default('standard');
             $table->unsignedTinyInteger('capacity')->default(1);
             // ↓ FIXED: no ->after() on CREATE TABLE — column order is defined by position here
             $table->boolean('is_active')->default(true)->comment('Soft-disable a room without deleting it');

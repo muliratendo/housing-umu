@@ -1,4 +1,4 @@
-export type RoomType = 'self-contained' | 'non-self-contained' | 'apartment';
+export type RoomType = 'self-contained' | 'standard' | 'apartment';
 export type ManagementType = 'campus-managed' | 'affiliated';
 export type AvailabilityStatus = 'available' | 'limited' | 'full';
 export type GenderScope = 'male' | 'female' | 'mixed';

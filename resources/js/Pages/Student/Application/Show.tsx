@@ -1,6 +1,7 @@
 // File: resources/js/Pages/Student/Application/Show.tsx
 import React from 'react';
 import { Head, Link } from '@inertiajs/react';
+import { router } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 import {
   Building2, Calendar, ChevronLeft, ExternalLink, Info, MapPin,
@@ -26,6 +27,8 @@ interface Preferences {
 interface ApplicationDetail {
   id: number;
   hostel_name: string;
+  hostel_id: number;
+  hostel_slug: string;
   hostel_location?: string;
   hostel_type: string;
   term_name: string;
@@ -39,6 +42,11 @@ interface ApplicationDetail {
   dean_permission_granted?: boolean;
   permission_notes?: string;
   allocation?: AllocationSnapshot;
+  // NEW: lifecycle flags computed server-side (see Application model helpers)
+  is_draft: boolean;
+  can_be_withdrawn: boolean;
+  can_be_resubmitted: boolean;
+  can_be_edited: boolean;
 }
 
 interface Props {
@@ -50,15 +58,30 @@ interface Props {
 export default function ApplicationShow({ application }: Props) {
   const isRejected = application.status === 'rejected';
   const isWaitlisted = application.status === 'waitlisted';
+  const isWithdrawn = application.status === 'withdrawn'; // NEW
   const hasAllocation = !!application.allocation;
+
+  // NEW: withdraw a submitted, pending/waitlisted application. Row is kept —
+  // only the status flips to 'withdrawn' server-side.
+  const handleWithdraw = () => {
+    if (!confirm('Withdraw this application? You can re-submit it later.')) return;
+    router.post(route('student.applications.withdraw', application.id));
+  };
+
+  // NEW: re-submit a previously withdrawn application — re-validates
+  // eligibility (window open, no active allocation, gender match) server-side.
+  const handleResubmit = () => {
+    router.post(route('student.applications.resubmit', application.id));
+  };
 
   return (
     <AuthenticatedLayout
       title="Application Details"
       breadcrumbs={[
+        { label: 'Dashboard', href: route('student.dashboard') },
         { label: 'Applications', href: route('student.applications.index') },
-        { label: application.hostel_name, href: '' },
-        { label: '', href: '' },
+        { label: application.hostel_name, href: route('student.hostels.show', { hostel: application.hostel_slug }) },
+        { label: `#${application.id}` },
       ]}
     >
       <Head title={`Application – ${application.hostel_name}`} />
@@ -211,12 +234,57 @@ export default function ApplicationShow({ application }: Props) {
           </Card>
         )}
 
+        {/* NEW: Withdrawn notice — replaces the plain status pill context with
+            an explanation and a re-submit CTA. */}
+        {isWithdrawn && (
+          <div className="flex items-center justify-between gap-3 text-sm bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg px-3 py-3">
+            <span className="text-amber-800 dark:text-amber-300">
+              You withdrew this application. You can re-submit it if the
+              application window is still open.
+            </span>
+            {application.can_be_resubmitted && (
+              <Button
+                size="sm"
+                className="bg-brand-700 hover:bg-brand-800 text-white shrink-0"
+                onClick={handleResubmit}
+              >
+                Re-submit
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* NEW: Withdraw / Edit actions — shown only while the application is
+            still in a pending/waitlisted state (see Application::canBeWithdrawn
+            and canBeEdited on the backend). */}
+        {(application.can_be_withdrawn || application.can_be_edited) && !isWithdrawn && (
+          <div className="flex gap-2">
+            {application.can_be_edited && (
+              <Button asChild size="sm" variant="outline">
+                <Link href={route('student.applications.edit', application.id)}>
+                  Edit Application
+                </Link>
+              </Button>
+            )}
+            {application.can_be_withdrawn && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-red-600 border-red-200 hover:bg-red-50"
+                onClick={handleWithdraw}
+              >
+                Withdraw Application
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* ── Rejected CTA (D3) ─────────────────────────────────────────────── */}
         {isRejected && (
           <Card className="rounded-xl border shadow-sm">
             <CardContent className="py-6 flex flex-col items-center text-center gap-3">
               <p className="text-sm text-muted-foreground">
-                Your application was not successful this term.
+                Your application was Rejected.
               </p>
               <Button asChild size="sm" className="bg-brand-700 hover:bg-brand-800 text-white">
                 <Link href={route('student.hostels.index')} title="Explore other hostels">

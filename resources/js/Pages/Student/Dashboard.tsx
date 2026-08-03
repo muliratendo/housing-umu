@@ -1,5 +1,6 @@
-// File: resources/js/Pages/Student/Dashboard.jsx
+// File: resources/js/Pages/Student/Dashboard.tsx
 import React, { useState } from 'react';
+import { route } from 'ziggy-js';
 import { Head, Link } from '@inertiajs/react';
 import {
   Calendar, BedDouble, Building2, Wrench, FileText,
@@ -11,17 +12,17 @@ import { Separator } from '@/components/ui/separator';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import KpiCard from '@/components/Student/KpiCard';
 import StatusPill from '@/components/Student/StatusPill';
-import NotificationBanner from '@/components/Student/NotificationBanner';
+import NotificationBanner, { BannerVariant } from '@/components/Student/NotificationBanner';
 import QuickActions from '@/components/Student/QuickActions';
-import HostelCard from '@/components/Student/HostelCard';
+import HostelCard, { HostelCardData } from '@/components/Student/HostelCard';
 import { cn } from '@/lib/utils';
-import { route } from 'ziggy-js';
 
 /**
  * S1 — Student Dashboard
  *
- * Props (from DashboardController::index):
- *  student, currentTerm, summary, recommendedHostels, recentActivity
+ * Props (from DashboardController::index).
+ * recommendedHostels now matches HostelCardData exactly — the controller
+ * must return every field HostelCard expects (see notes below).
  */
 interface DashboardProps {
   student: {
@@ -55,20 +56,19 @@ interface DashboardProps {
     maintenance_request: { subject: string } | null;
     can_access_maintenance: boolean;
   };
-  recommendedHostels: {
-    id: number;
-    name: string;
-    slug: string;
-    management_type: string;
-    gender_scope: string;
-    availability_status: string;
-  }[];
+  recommendedHostels: HostelCardData[];
   recentActivity: {
     description: string;
     timestamp: string;
     status: string;
     link: string;
   }[];
+}
+
+interface BannerProps {
+  message: string;
+  variant: BannerVariant;
+  cta: { label: string; href: string };
 }
 
 export default function Dashboard({
@@ -80,14 +80,12 @@ export default function Dashboard({
 }: DashboardProps) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const isEmpty = summary.application_status === 'not_applied';
-  const isNewStudent = student.is_first_year;
 
-  // ─── KPI card values ───────────────────────────────────────────────────────
   const kpiCards = [
     {
-      title:   'Current Semester',
-      value:   currentTerm ? `${currentTerm.name} – ${currentTerm.academic_year}` : '—',
-      icon:    Calendar,
+      title: 'Current Semester',
+      value: currentTerm ? `${currentTerm.name} – ${currentTerm.academic_year}` : '—',
+      icon: Calendar,
       subtitle: currentTerm
         ? currentTerm.is_application_window_open
           ? 'Application window open'
@@ -95,22 +93,22 @@ export default function Dashboard({
         : 'No active term',
     },
     {
-      title:    'Application Status',
-      value:    isEmpty ? '—' : <StatusPill status={summary.application_status} waitlistPosition={summary.waitlist_position} />,
-      icon:     FileText,
+      title: 'Application Status',
+      value: isEmpty ? '—' : <StatusPill status={summary.application_status} waitlistPosition={summary.waitlist_position} />,
+      icon: FileText,
       subtitle: summary.applications_count > 0
         ? `${summary.applications_count} application(s) this term`
         : 'No application yet',
-      action:   summary.applications_count > 0 && (
+      action: summary.applications_count > 0 && (
         <Link href={route('student.applications.index')} className="text-xs text-[#137c41] font-medium hover:underline flex items-center gap-1">
           View <ArrowRight className="size-3" />
         </Link>
       ),
     },
     {
-      title:   'Allocated Hostel',
-      value:   summary.allocation ? summary.allocation.hostel_name : '—',
-      icon:    Building2,
+      title: 'Allocated Hostel',
+      value: summary.allocation ? summary.allocation.hostel_name : '—',
+      icon: Building2,
       subtitle: summary.allocation
         ? `Room ${summary.allocation.room_number}, Bed ${summary.allocation.bed_number}`
         : 'Not yet allocated',
@@ -121,11 +119,11 @@ export default function Dashboard({
       ),
     },
     {
-      title:    'Maintenance Status',
-      value:    summary.maintenance_status
+      title: 'Maintenance Status',
+      value: summary.maintenance_status
         ? <StatusPill status={summary.maintenance_status} />
         : '—',
-      icon:     Wrench,
+      icon: Wrench,
       subtitle: summary.maintenance_request
         ? summary.maintenance_request.subject
         : summary.can_access_maintenance
@@ -140,26 +138,28 @@ export default function Dashboard({
   ];
 
   // ─── Notification banner logic (D1 variants) ───────────────────────────────
-  const getBannerProps = () => {
+  // Explicit return type + `as const` on each variant literal fixes the
+  // "Type 'string' is not assignable to type 'BannerVariant'" error, since
+  // without this TS widens 'info'/'warning' to plain `string`.
+  const getBannerProps = (): BannerProps | null => {
     if (isEmpty && currentTerm?.is_application_window_open) {
       return {
         message: 'Housing application window is now open for the new academic year.',
-        variant: 'info',
+        variant: 'info' as const,
         cta: { label: 'View Hostels →', href: route('student.hostels.index') },
       };
     }
     if (!currentTerm?.is_application_window_open && currentTerm) {
       return {
         message: 'Applications are currently closed for the season.',
-        variant: 'warning',
+        variant: 'warning' as const,
         cta: { label: 'View Hostels →', href: route('student.hostels.index') },
       };
     }
-    // Check-in reminder
     if (summary.allocation?.status === 'allocated') {
       return {
         message: 'Please confirm your check-in to activate your room assignment.',
-        variant: 'warning',
+        variant: 'warning' as const,
         cta: { label: 'Confirm Check-In →', href: route('student.allocation.show') },
       };
     }
@@ -171,20 +171,20 @@ export default function Dashboard({
   return (
     <AuthenticatedLayout
       title="Dashboard"
-      breadcrumbs={[{ label: 'Dashboard', href: route('student.dashboard') }]}
+      breadcrumbs={[
+        { label: 'Dashboard' },
+      ]}
     >
       <Head title="Student Dashboard – Housing@UMU" />
 
       <div className="space-y-6 px-4 py-6 max-w-7xl mx-auto">
 
-        {/* ── Upper-Top: KPI Cards ────────────────────────────────────────── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {kpiCards.map((card) => (
             <KpiCard key={card.title} {...card} />
           ))}
         </div>
 
-        {/* ── Lower-Top: Notification Banner ─────────────────────────────── */}
         {bannerProps && !bannerDismissed && (
           <NotificationBanner
             {...bannerProps}
@@ -192,9 +192,7 @@ export default function Dashboard({
           />
         )}
 
-        {/* ── Mid-Section ────────────────────────────────────────────────── */}
         {isEmpty ? (
-          /* EMPTY STATE */
           <Card className="rounded-xl border shadow-sm">
             <CardContent className="py-12 px-6 flex flex-col items-center text-center gap-4">
               <div className="rounded-full bg-[#f1b418]/10 p-5">
@@ -227,9 +225,7 @@ export default function Dashboard({
             </CardContent>
           </Card>
         ) : (
-          /* ACTIVE STATE: Current Allocation + Applications */
           <div className="grid lg:grid-cols-3 gap-4">
-            {/* Current Allocation */}
             <div className="lg:col-span-2 space-y-4">
               {summary.allocation && (
                 <Card className="rounded-xl border shadow-sm">
@@ -271,7 +267,6 @@ export default function Dashboard({
                 </Card>
               )}
 
-              {/* Applications this term */}
               {summary.applications.length > 0 && (
                 <Card className="rounded-xl border shadow-sm">
                   <CardHeader className="pb-2">
@@ -313,14 +308,12 @@ export default function Dashboard({
               )}
             </div>
 
-            {/* Quick Actions */}
             <div className="space-y-4">
               <QuickActions canAccessMaintenance={summary.can_access_maintenance} />
             </div>
           </div>
         )}
 
-        {/* ── Recommended Hostels ──────────────────────────────────────────── */}
         {recommendedHostels.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-3">
@@ -342,9 +335,7 @@ export default function Dashboard({
           </section>
         )}
 
-        {/* ── Bottom: Recent Activity (Variant A/B) ──────────────────────── */}
         <div className="grid lg:grid-cols-3 gap-4">
-          {/* Recent Activity */}
           <div className="lg:col-span-2">
             <Card className="rounded-xl border shadow-sm h-full">
               <CardHeader className="pb-2">
@@ -355,7 +346,6 @@ export default function Dashboard({
               </CardHeader>
               <CardContent>
                 {recentActivity.length === 0 ? (
-                  /* Variant A: No Activity */
                   <div className="flex flex-col items-center py-8 text-center gap-2">
                     <ClipboardList className="size-10 text-muted-foreground/30" strokeWidth={1} />
                     <p className="text-sm font-medium text-muted-foreground">No activity yet</p>
@@ -364,7 +354,6 @@ export default function Dashboard({
                     </p>
                   </div>
                 ) : (
-                  /* Variant B: Has activity */
                   <div className="space-y-3">
                     {recentActivity.map((item, i) => (
                       <div key={i}>
@@ -394,7 +383,6 @@ export default function Dashboard({
             </Card>
           </div>
 
-          {/* Quick actions in empty state */}
           {isEmpty && (
             <QuickActions canAccessMaintenance={summary.can_access_maintenance} />
           )}

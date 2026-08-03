@@ -89,10 +89,11 @@ export default function MaintenanceShow({ maintenanceRequest }: Props) {
   return (
     <AuthenticatedLayout
       title="Maintenance Request"
+      // maintenanceRequest.id from props
       breadcrumbs={[
+        { label: 'Dashboard', href: route('student.dashboard') },
         { label: 'Maintenance', href: route('student.maintenance.index') },
-        { label: req.subject, href: '' },
-        { label: '', href: '' },
+        { label: `#${maintenanceRequest.id}` },
       ]}
     >
       <Head title={`Maintenance – ${req.subject}`} />

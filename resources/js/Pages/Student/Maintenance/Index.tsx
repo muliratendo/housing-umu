@@ -50,8 +50,8 @@ export default function MaintenanceIndex({ requests, allocation, currentTerm }: 
     <AuthenticatedLayout
       title="Maintenance Requests"
       breadcrumbs={[
-        { label: 'Maintenance', href: '' },
-        { label: '', href: '' },
+        { label: 'Dashboard', href: route('student.dashboard') },
+        { label: 'Maintenance' },
       ]}
     >
       <Head title="Maintenance Requests – Housing@UMU" />

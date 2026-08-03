@@ -16,6 +16,7 @@ return new class extends Migration {
             $table->boolean('is_internal')->default(false)->comment('Admin-only notes');
             $table->timestamps();
             $table->softDeletes();
+            
             $table->index(['maintenance_request_id', 'created_at']);
         });
     }

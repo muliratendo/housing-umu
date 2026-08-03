@@ -7,19 +7,24 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
-        Schema::create('verified_student_records', function (Blueprint $blueprint) {
-        $blueprint->id();
-        $blueprint->string('reg_number')->unique();     // e.g., "22/UMU/..."
-        $blueprint->string('student_email')->nullable();
-        $blueprint->string('contact')->nullable();
-        $blueprint->string('first_name');               // Includes middle names
-        $blueprint->string('last_name');
-        $blueprint->string('faculty');
-        $blueprint->string('course');
-        $blueprint->string('gender');
+        Schema::create('verified_student_records', function (Blueprint $table) {
+        $table->id();
+        $table->string('reg_number')->unique();     // e.g., "2025-..."
+        $table->string('student_email')->nullable();
+        $table->string('contact')->nullable();
+        $table->string('first_name');               // Includes middle names
+        $table->string('last_name');
+        $table->string('faculty');
+        $table->string('course');
+        $table->string('gender');
 
-        $blueprint->foreignId('user_id')->nullable()->constrained()->onDelete('set null');
-        $blueprint->timestamps();
+        $table->foreignId('user_id')->nullable()->constrained()->onDelete('set null');
+        $table->foreignId('matched_by')->nullable()->constrained('users')->nullOnDelete();
+        $table->timestamp('matched_at')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+
+        $table->index(['user_id', 'matched_at'], 'idx_verified_records_user_match_time');
     });
     }
 

@@ -1,39 +1,71 @@
 <?php
+// File: app/Providers/AppServiceProvider.php
+//
+// Registers all model policies (so Gate::authorize() / @can / $user->can()
+// resolve correctly for every model with object-level authorization) and
+// attaches AllocationObserver to the three models it observes.
+
+declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Models\Room;
-use App\Policies\RoomPolicy;
+use App\Models\{
+    AcademicTerm,
+    Allocation,
+    Application,
+    Bed,
+    Hostel,
+    MaintenanceRequest,
+    Room,
+    Student,
+    User,
+};
+use App\Observers\AllocationObserver;
+use App\Policies\{
+    AcademicTermPolicy,
+    ApplicationPolicy,
+    AllocationPolicy,
+    BedPolicy,
+    HostelPolicy,
+    MaintenanceRequestPolicy,
+    RoomPolicy,
+    StudentPolicy,
+    UserPolicy,
+};
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\URL; // 👈 1. Import the URL facade
+
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register(): void
     {
-       //
-        $this->app->singleton(
-            \App\Services\OccupancyMetricsService::class
-        );
+        //
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
+        // ── Policy registrations ────────────────────────────────────────────
+        Gate::policy(Hostel::class, HostelPolicy::class);
         Gate::policy(Room::class, RoomPolicy::class);
+        Gate::policy(Student::class, StudentPolicy::class);
+        Gate::policy(Application::class, ApplicationPolicy::class);
+        Gate::policy(Allocation::class, AllocationPolicy::class);
+        Gate::policy(Bed::class, BedPolicy::class);
+        Gate::policy(MaintenanceRequest::class, MaintenanceRequestPolicy::class);
+        Gate::policy(User::class, UserPolicy::class);
+        Gate::policy(AcademicTerm::class, AcademicTermPolicy::class);
 
-        // Force secure HTTPS asset generation whenever running behind Render's secure load balancers
-        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
-            URL::forceScheme('https');
-        }
-        Vite::prefetch(concurrency: 3);
+        // ── Observer registrations ──────────────────────────────────────────
+        // AllocationObserver is shared across Hostel/Room (cache + search
+        // sync) and Allocation (bed status transitions, waitlist promotion,
+        // occupancy metrics flush) — see app/Observers/AllocationObserver.php
+        Hostel::observe(AllocationObserver::class);
+        Room::observe(AllocationObserver::class);
+        Allocation::observe(AllocationObserver::class);
 
-        \App\Models\Allocation::observe(\App\Observers\AllocationObserver::class);
+        // Global super-admin perission bypass
+    Gate::before(function ($user, string $ability) {
+        return $user->hasRole('super_admin') ? true : null;
+    });
     }
 }

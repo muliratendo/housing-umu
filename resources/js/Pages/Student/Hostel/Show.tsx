@@ -1,10 +1,17 @@
 // File: resources/js/Pages/Student/Hostel/Show.tsx
+// NEW (storefront redesign): this page now works like an Airbnb listing page combined
+// with an online store. Room "categories" (standard / self-contained / apartment) are
+// rendered as product cards — each with its own image placeholder, starting price, and
+// occupancy options. Clicking "Apply" on a category forwards ?room_type=<category> to
+// the application create page, where occupancy and optional preferred rooms are chosen.
+// The old flat "Rooms" list table has been removed in favor of these product cards.
 import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 import {
   AlertCircle, BedDouble, Building2, CheckCircle2, ChevronLeft,
-  Info, Lock, MapPin, Users,
+  Info, Lock, MapPin, Users, ArrowRight,
+  ShieldAlert,  // NEW: used by the gender-ineligibility notice
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +24,9 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import StatusPill from '@/components/Student/StatusPill';
 import { cn } from '@/lib/utils';
 
+
 // ── Types ──────────────────────────────────────────────────────────────────────
+
 
 interface HostelDetail {
   id: number;
@@ -33,24 +42,37 @@ interface HostelDetail {
   total_capacity: number;
 }
 
-interface RoomRow {
-  id: number;
-  room_number: string;
-  room_type?: string;
-  floor?: string | number;
-  gender_override?: string;
+
+// NEW: occupancy option within a room category — single or double, each with its own price.
+interface OccupancyOption {
   capacity: number;
+  label: string;
+  price: number | string;
 }
+
+
+// NEW: a room "category" behaves like a storefront product (standard / self-contained / apartment).
+interface RoomCategory {
+  room_type: string;
+  label: string;
+  description?: string | null;
+  starting_price: number | string;
+  room_count: number;
+  occupancy_options: OccupancyOption[];
+}
+
 
 interface AllocationRef {
   hostel_name: string;
   room_number: string;
 }
 
+
 interface ApplicationRef {
   id: number;
   status: string;
 }
+
 
 interface Term {
   id: number;
@@ -58,9 +80,15 @@ interface Term {
   academic_year: string;
 }
 
+
 interface Props {
   hostel: HostelDetail;
-  rooms: RoomRow[];
+  categories: RoomCategory[]; // NEW: replaces the old flat `rooms` prop
+  // NEW: true when the hostel's gender_scope excludes this student outright
+  // (e.g. a female student viewing a male-only hall). Distinct from an
+  // empty categories array with zero active rooms — this tells the frontend
+  // to show an eligibility notice instead of a "no rooms" empty state.
+  genderIneligible: boolean;
   activeAllocation?: AllocationRef | null;
   existingApplication?: ApplicationRef | null;
   requiresRenewal: boolean;
@@ -70,7 +98,9 @@ interface Props {
   student: { name: string; is_first_year: boolean };
 }
 
+
 // ── Constants ─────────────────────────────────────────────────────────────────
+
 
 const GENDER_LABELS: Record<string, string> = {
   male: 'Male Only',
@@ -78,16 +108,28 @@ const GENDER_LABELS: Record<string, string> = {
   mixed: 'Mixed',
 };
 
+
 const TYPE_LABELS: Record<string, string> = {
   'campus-managed': 'On-Campus',
   affiliated: 'Affiliated',
 };
 
+
+// NEW: icon per room category, used on the storefront product cards.
+const CATEGORY_ICON: Record<string, React.ReactNode> = {
+  standard: <BedDouble className="size-5" />,
+  'self-contained': <Building2 className="size-5" />,
+  apartment: <Building2 className="size-5" />,
+};
+
+
 // ── Component ─────────────────────────────────────────────────────────────────
+
 
 export default function HostelShow({
   hostel,
-  rooms,
+  categories,
+  genderIneligible, // NEW
   activeAllocation,
   existingApplication,
   requiresRenewal,
@@ -101,6 +143,7 @@ export default function HostelShow({
     requiresRenewal && !existingApplication
   );
 
+
   const handleRenewalRequest = () => {
     router.post(route('student.allocation.request', 'renewal_request'), {
       allocation_id: 0,
@@ -110,13 +153,15 @@ export default function HostelShow({
     setRenewalDialogOpen(false);
   };
 
-  // Determine primary CTA (D0, D2, D7)
+
+  // Determine primary CTA (D0, D2, D7) — governs whether category cards are clickable at all.
   type CtaConfig =
     | { label: string; href: string; disabled: false; kind: 'link' }
     | { label: string; onClick: () => void; disabled: false; kind: 'button' }
     | { label: string; disabled: true; kind: 'button' };
 
-  const getCta = (): CtaConfig => {
+
+  const getBannerCta = (): CtaConfig | null => {
     if (activeAllocation)
       return { label: 'View Allocation', href: route('student.allocation.show'), disabled: false, kind: 'link' };
     if (existingApplication)
@@ -125,26 +170,27 @@ export default function HostelShow({
       return { label: 'Request Renewal', onClick: () => setRenewalDialogOpen(true), disabled: false, kind: 'button' };
     if (!windowOpen)
       return { label: 'Applications Closed', disabled: true, kind: 'button' };
-    return {
-      label: 'Apply Now',
-      href: route('student.applications.create', { hostel_id: hostel.id }),
-      disabled: false,
-      kind: 'link',
-    };
+    return null; // No blocking state — category cards drive the "Apply" action instead
   };
 
-  const cta = getCta();
+
+  const bannerCta = getBannerCta();
+  // NEW: category cards are only actionable when nothing blocks a fresh application.
+  const canApplyToCategories = !bannerCta;
+
 
   return (
     <AuthenticatedLayout
       title={hostel.name}
+      // hostel.name from the Inertia prop
       breadcrumbs={[
+        { label: 'Dashboard', href: route('student.dashboard') },
         { label: 'Hostels', href: route('student.hostels.index') },
-        { label: hostel.name, href: '' },
-        { label: '', href: '' },
+        { label: hostel.name },
       ]}
     >
       <Head title={`${hostel.name} – Housing@UMU`} />
+
 
       {/* D7: Renewal popup ───────────────────────────────────────────────── */}
       <Dialog open={renewalDialogOpen} onOpenChange={setRenewalDialogOpen}>
@@ -170,7 +216,9 @@ export default function HostelShow({
         </DialogContent>
       </Dialog>
 
+
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+
 
         <Link
           href={route('student.hostels.index')}
@@ -179,7 +227,8 @@ export default function HostelShow({
           <ChevronLeft className="size-3.5" /> Back to Hostels
         </Link>
 
-        {/* ── Hero image ──────────────────────────────────────────────────── */}
+
+        {/* ── Hero image (Airbnb-style listing header) ──────────────────── */}
         <div className="rounded-xl overflow-hidden border shadow-sm">
           {hostel.image_path ? (
             <img
@@ -194,7 +243,8 @@ export default function HostelShow({
           )}
         </div>
 
-        {/* ── Header + CTA ───────────────────────────────────────────────── */}
+
+        {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold font-heading text-foreground">{hostel.name}</h1>
@@ -221,31 +271,31 @@ export default function HostelShow({
             </div>
           </div>
 
-          {/* Primary CTA */}
-          {cta.kind === 'link' && !cta.disabled ? (
-            <Button
-              asChild
-              className="bg-brand-700 hover:bg-brand-800 text-white font-semibold"
-              title={cta.label}
-            >
-              <Link href={(cta as { href: string }).href}>{cta.label}</Link>
-            </Button>
-          ) : (
-            <Button
-              disabled={cta.disabled}
-              onClick={'onClick' in cta ? cta.onClick : undefined}
-              className={cn(
-                'font-semibold',
-                cta.disabled
-                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                  : 'bg-brand-700 hover:bg-brand-800 text-white'
-              )}
-              title={cta.disabled ? 'Application window is closed' : cta.label}
-            >
-              {cta.label}
-            </Button>
+
+          {/* Blocking-state CTA (only rendered when the student cannot apply at all) */}
+          {bannerCta && (
+            bannerCta.kind === 'link' && !bannerCta.disabled ? (
+              <Button asChild className="bg-brand-700 hover:bg-brand-800 text-white font-semibold" title={bannerCta.label}>
+                <Link href={(bannerCta as { href: string }).href}>{bannerCta.label}</Link>
+              </Button>
+            ) : (
+              <Button
+                disabled={bannerCta.disabled}
+                onClick={'onClick' in bannerCta ? bannerCta.onClick : undefined}
+                className={cn(
+                  'font-semibold',
+                  bannerCta.disabled
+                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                    : 'bg-brand-700 hover:bg-brand-800 text-white'
+                )}
+                title={bannerCta.disabled ? 'Application window is closed' : bannerCta.label}
+              >
+                {bannerCta.label}
+              </Button>
+            )
           )}
         </div>
+
 
         {/* ── Status banners ───────────────────────────────────────────────── */}
         {activeAllocation && (
@@ -283,6 +333,7 @@ export default function HostelShow({
             </div>
           )}
 
+
         {/* ── Stats card ──────────────────────────────────────────────────── */}
         <Card className="rounded-xl border shadow-sm">
           <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
@@ -297,7 +348,7 @@ export default function HostelShow({
             </div>
             {hostel.price_per_semester && (
               <div>
-                <p className="text-xs text-muted-foreground">Price/Semester</p>
+                <p className="text-xs text-muted-foreground">From</p>
                 <p className="font-semibold">
                   UGX {Number(hostel.price_per_semester).toLocaleString()}
                 </p>
@@ -314,6 +365,7 @@ export default function HostelShow({
           </CardContent>
         </Card>
 
+
         {/* ── Description ─────────────────────────────────────────────────── */}
         {hostel.description && (
           <Card className="rounded-xl border shadow-sm">
@@ -328,39 +380,123 @@ export default function HostelShow({
           </Card>
         )}
 
-        {/* ── Rooms ───────────────────────────────────────────────────────── */}
-        {rooms.length > 0 && (
-          <Card className="rounded-xl border shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <BedDouble className="size-4 text-accent-500" />
-                Rooms ({rooms.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y divide-border">
-                {rooms.map((room) => (
-                  <div key={room.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                    <div>
-                      <p className="font-medium">Room {room.room_number}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {room.room_type}
-                        {room.floor ? ` · Floor ${room.floor}` : ''}
-                        {room.gender_override
-                          ? ` · ${GENDER_LABELS[room.gender_override] ?? room.gender_override}`
-                          : ''}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Users className="size-3 text-accent-500" />
-                      Cap. {room.capacity}
-                    </div>
-                  </div>
-                ))}
+
+        {/* ── NEW: Room Category "Storefront" ──────────────────────────────
+    Each category (standard / self-contained / apartment) is a product
+    card. Clicking "Apply" forwards room_type to the application page,
+    where occupancy and optional preferred rooms are chosen. */}
+        {genderIneligible ? (
+          // NEW: gender-eligibility notice — replaces the entire storefront
+          // section when hostel.gender_scope excludes this student outright.
+          // Distinct from an empty-but-eligible categories array; this is a
+          // hard "you cannot apply here" message, not a "nothing to show" one.
+          <Card className="rounded-xl border border-amber-300 bg-amber-50 shadow-sm dark:bg-amber-900/20">
+            <CardContent className="p-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+              <div className="shrink-0 rounded-full bg-amber-100 p-2.5 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                <ShieldAlert className="size-5" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Rooms in this hostel are reserved for {GENDER_LABELS[hostel.gender_policy]?.toLowerCase() ?? 'a specific'} students
+                </p>
+                <p className="text-sm text-amber-800/90 dark:text-amber-300/90">
+                  Based on your student profile, you're not eligible to apply to{' '}
+                  <span className="font-medium">{hostel.name}</span>. You can browse other
+                  hostels that match your profile, or contact support if you believe this is
+                  an error.
+                </p>
+                {/* NEW: two explicit escape routes — browse elsewhere, or reach support —
+            per the requirement that the notice must guide the student forward
+            rather than just block them. */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button asChild size="sm" className="bg-brand-700 hover:bg-brand-800 text-white font-semibold">
+                    <Link href={route('student.hostels.index')}>
+                      Browse Other Hostels
+                    </Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline" className="font-semibold">
+                    <Link href={route('public.support')} className="flex items-center gap-1.5">
+                      <Info className="size-3.5" /> Contact Support
+                    </Link>
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
+        ) : categories.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <BedDouble className="size-4 text-accent-500" />
+              Room Categories
+            </h2>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {categories.map((category) => (
+                <Card
+                  key={category.room_type}
+                  className="rounded-xl border shadow-sm overflow-hidden flex flex-col"
+                >
+                  {/* Product "image" placeholder — consistent with hero image treatment */}
+                  <div className="h-28 bg-muted flex items-center justify-center text-muted-foreground/40">
+                    {CATEGORY_ICON[category.room_type] ?? <BedDouble className="size-8" strokeWidth={1} />}
+                  </div>
+                  <CardContent className="p-4 flex flex-col gap-3 flex-1">
+                    <div>
+                      <p className="font-semibold text-sm">{category.label}</p>
+                      {category.description && (
+                        <p className="text-xs text-muted-foreground mt-1">{category.description}</p>
+                      )}
+                    </div>
+
+                    {/* Occupancy chips — informational only here, chosen for real on the application page */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {category.occupancy_options.map((opt) => (
+                        <Badge key={opt.capacity} variant="outline" className="text-[10px]">
+                          {opt.label} · UGX {Number(opt.price).toLocaleString()}
+                        </Badge>
+                      ))}
+                    </div>
+
+                    <div className="mt-auto flex items-center justify-between pt-2">
+                      <div>
+                        <p className="text-xs text-muted-foreground">From</p>
+                        <p className="font-bold font-heading text-brand-700">
+                          UGX {Number(category.starting_price).toLocaleString()}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        disabled={!canApplyToCategories}
+                        asChild={canApplyToCategories}
+                        className={cn(
+                          'font-semibold',
+                          canApplyToCategories
+                            ? 'bg-brand-700 hover:bg-brand-800 text-white'
+                            : 'bg-muted text-muted-foreground cursor-not-allowed'
+                        )}
+                        title={canApplyToCategories ? `Apply for ${category.label}` : 'Applications currently unavailable'}
+                      >
+                        {canApplyToCategories ? (
+                          <Link
+                            href={route('student.applications.create', {
+                              hostel_id: hostel.id,
+                              room_type: category.room_type,
+                            })}
+                            className="flex items-center gap-1"
+                          >
+                            Apply <ArrowRight className="size-3.5" />
+                          </Link>
+                        ) : (
+                          <span>Apply</span>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
         )}
+
 
       </div>
     </AuthenticatedLayout>

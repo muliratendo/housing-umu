@@ -22,6 +22,8 @@ return new class extends Migration {
             $table->timestamp('closed_at')->nullable();
             $table->foreignId('resolved_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
+            $table->softDeletes();
+            
             $table->index(['student_id', 'academic_term_id', 'status']);
             $table->index(['hostel_id', 'room_id', 'academic_term_id']);
         });

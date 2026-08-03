@@ -145,34 +145,53 @@ class DashboardController extends Controller
         ];
     }
 
+    // checks each recommended hostel against the student's existing Application/Allocation records for the current term
     private function getRecommendedHostels(\App\Models\Student $student, AcademicTerm $term): array
     {
+        $appliedHostelIds = Application::where('student_id', $student->id)
+            ->where('academic_term_id', $term->id)
+            ->pluck('hostel_id')
+            ->toArray();
+
+        $hasActiveAllocation = $student->activeAllocationForTerm($term->id) !== null;
+
         return Hostel::active()
             ->when($student->is_first_year, fn($q) => $q->campus())
-            ->where(fn($q) => $q
-                ->where('gender_policy', 'mixed')
-                ->orWhere('gender_policy', $student->gender)
-            )
+            // FIX: filter on the real column (gender_scope), not the
+            // gender_policy accessor — accessors don't exist as SQL columns
+            // and can't be used in where()/orWhere().
+            ->where(fn($q) => $q->where('gender_scope', 'mixed')->orWhere('gender_scope', $student->gender))
             ->limit(3)
-            ->get(['id', 'name', 'hostel_type', 'gender_policy', 'location',
-                   'price_per_semester', 'image_path', 'slug'])
-            ->map(fn($h) => [
-                'id'                 => $h->id,
-                'name'               => $h->name,
-                'slug'               => $h->slug,
-                'hostel_type'        => $h->hostel_type,
-                'gender_policy'      => $h->gender_policy,
-                'location'           => $h->location,
-                'price_per_semester' => $h->price_per_semester,
-                'image_path'         => $h->image_path,
-                'available_beds'     => $h->availableBedCount($term->id),
-                'total_capacity'     => $h->total_capacity,
-                'window_open'        => $h->isApplicationWindowOpen($term),
-                'already_applied'    => false,
-                'requires_renewal'   => false,
-                'can_apply'          => $h->isApplicationWindowOpen($term),
-                'has_active_allocation' => false,
-            ])
+            // FIX: select real columns only (id, name, slug, management_type,
+            // gender_scope, location, image_url). hostel_type/gender_policy/
+            // image_path/price_per_semester are accessors — selecting them
+            // literally sends invalid column names to MySQL.
+            // price_per_semester also needs 'rooms' eager-loaded since its
+            // accessor derives from Room::price_per_semester, not a hostels
+            // column — see Hostel::getPricePerSemesterAttribute()'s N+1 warning.
+            ->with(['rooms' => fn($q) => $q->where('is_active', true)])
+            ->get(['id', 'name', 'slug', 'management_type', 'gender_scope', 'location', 'image_url'])
+            ->map(function ($h) use ($term, $appliedHostelIds, $hasActiveAllocation, $student) {
+                $alreadyApplied = in_array($h->id, $appliedHostelIds, true);
+                // These now resolve via the model's accessors — hostel_type
+                // reads management_type, gender_policy reads gender_scope,
+                // image_path reads image_url, price_per_semester derives
+                // from the eager-loaded rooms relation above.
+                $requiresRenewal = !$student->is_first_year && $h->hostel_type === 'campus-managed';
+                return [
+                    'id' => $h->id, 'name' => $h->name, 'slug' => $h->slug,
+                    'hostel_type' => $h->hostel_type, 'gender_policy' => $h->gender_policy,
+                    'location' => $h->location, 'price_per_semester' => $h->price_per_semester,
+                    'image_path' => $h->image_path,
+                    'available_beds' => $h->availableBedCount($term->id),
+                    'total_capacity' => $h->total_capacity,
+                    'window_open' => $h->isApplicationWindowOpen($term),
+                    'already_applied' => $alreadyApplied,
+                    'requires_renewal' => $requiresRenewal,
+                    'can_apply' => !$hasActiveAllocation && !$alreadyApplied && $h->isApplicationWindowOpen($term),
+                    'has_active_allocation' => $hasActiveAllocation,
+                ];
+            })
             ->toArray();
     }
 

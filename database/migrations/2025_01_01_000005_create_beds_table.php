@@ -26,6 +26,8 @@ return new class extends Migration {
 
             $table->timestamps();
 
+            $table->softDeletes();
+
             // BR-1: one bed label per room
             $table->unique(['room_id', 'label']);
             $table->index(['room_id', 'status']);

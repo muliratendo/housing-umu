@@ -59,6 +59,10 @@ export default function HostelCard({ hostel }: Props) {
   } = hostel;
 
   // ── Determine disabled reason (null = enabled) ────────────────────────────
+  // UNCHANGED: disabling logic still applies even though the CTA now points
+  // to the detail page rather than the application form directly — a
+  // closed window or existing allocation should still block navigation
+  // into the apply flow, not just the final submit.
 
   const applyDisabledReason: string | null = has_active_allocation
     ? 'You already have an active allocation this semester'
@@ -72,18 +76,32 @@ export default function HostelCard({ hostel }: Props) {
   const isDisabled = !!applyDisabledReason && !already_applied;
 
   // ── CTA label and destination ─────────────────────────────────────────────
+  // FIX: Apply Now used to link straight to student.applications.create with
+  // only hostel_id — but ApplicationController::create() now requires a
+  // room_type (category) query param, which only the Hostel Detail page
+  // (Show.tsx / HostelController::show()) collects via its storefront-style
+  // category cards. Linking directly from the index card skipped that
+  // selection step entirely, causing the 422 "A room category must be
+  // selected from the hostel page" on every attempt.
+  // NEW: all primary actions from the index/list page now route through
+  // student.hostels.show first. The detail page is where the student picks
+  // a category (and occupancy), and THAT page is responsible for forwarding
+  // room_type to applications.create — this card no longer constructs that
+  // URL at all.
 
   const ctaLabel: string = already_applied
     ? 'View Application'
     : requires_renewal
       ? 'Request Renewal'
-      : 'Apply Now';
+      : 'View Details'; // was 'Apply Now' — action now happens on the detail page
 
   const ctaHref: string = already_applied
     ? route('student.applications.index')
-    : requires_renewal
-      ? route('student.hostels.show', { hostel: slug })   // renewal dialog on S3
-      : route('student.applications.create', { hostel_id: id });
+    : route('student.hostels.show', { hostel: slug });
+  // NEW: requires_renewal and the default case both now resolve to the
+  // same detail route — Show.tsx already receives requiresRenewal as a
+  // prop and decides what UI to render (renewal dialog vs. category
+  // cards) from there, so no branching is needed at this level anymore.
 
   // ── Render ────────────────────────────────────────────────────────────────
 

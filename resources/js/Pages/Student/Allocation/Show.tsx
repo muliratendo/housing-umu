@@ -105,10 +105,10 @@ export default function AllocationShow({
     return (
       <AuthenticatedLayout
         title="Allocation Status"
+        // allocation.id from the Inertia prop
         breadcrumbs={[
           { label: 'Dashboard', href: route('student.dashboard') },
-          { label: 'Allocation', href: '' },
-          { label: '', href: '' },
+          { label: `Allocation Status` },
         ]}
       >
         <Head title="Allocation Status – Housing@UMU" />
@@ -137,7 +137,7 @@ export default function AllocationShow({
       title="Allocation Status"
       breadcrumbs={[
         { label: 'Dashboard', href: route('student.dashboard') },
-        { label: 'Allocation', href: '#' },
+        { label: `Allocation #${allocation.id}` },
       ]}
     >
       <Head title="Allocation Status – Housing@UMU" />

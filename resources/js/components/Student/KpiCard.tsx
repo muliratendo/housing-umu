@@ -21,7 +21,7 @@ export default function KpiCard({
   action = null,
 }: KpiCardProps) {
   return (
-    <Card className={cn('rounded-xl border shadow-sm hover:shadow-md transition-shadow', className)}>
+    <Card className={cn('rounded-xl border shadow-sm hover:shadow-md transition-shadow, p-0', className)}>
       <CardContent className="p-5 flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground font-medium truncate">{title}</span>

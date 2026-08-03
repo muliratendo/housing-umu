@@ -17,7 +17,7 @@ export const ROOM_TYPE_OPTIONS: {
   helper?: string;
 }[] = [
   { value: 'self-contained', label: 'Self-Contained Room' },
-  { value: 'non-self-contained', label: 'Standard Room' },
+  { value: 'standard', label: 'Standard Room' },
   {
     value: 'apartment',
     label: 'Apartment',

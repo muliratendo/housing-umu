@@ -20,6 +20,8 @@ return new class extends Migration {
             $table->foreignId('current_academic_year_id')->nullable()
                   ->constrained('academic_years')->nullOnDelete();
             $table->timestamps();
+            $table->softDeletes();
+            
             $table->index(['user_id', 'year_of_study']);
         });
     }

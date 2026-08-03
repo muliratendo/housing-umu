@@ -1,29 +1,30 @@
 <?php
-// File: database/seeders/DatabaseSeeder.php  REPLACE existing.
-//
-// Root fix: removed bed_count + price_per_semester from all hostel inserts.
-// Added campus_location field to hostels.
-// 16 canonical hostels per business spec.
-// Rooms: ~40% single (UGX 450,000 | capacity=1), ~60% double (UGX 900,000 | capacity=2).
-// Beds created by Room::syncBeds() — no manual bed insert needed.
-// Affiliated on-campus (Luwum): non-sc 1,268,500 | sc 1,775,900 | apt 2,029,600 (single).
-// Affiliated off-campus: ±5–8% variation from base 1,150,000 (nsc) / 1,600,000 (sc).
-
+// database/seeders/DatabaseSeeder.php
 namespace Database\Seeders;
 
 use App\Models\{Bed, Hostel, Room, Student, User};
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Roles/permissions must exist before syncRoles() calls below.
         $this->call([RolePermissionSeeder::class]);
-        $this->seedAccounts();
-        $this->seedStudents();
-        $this->seedHostels();
+
+        DB::transaction(function () {
+            $this->seedAccounts();
+            $this->seedStudents();
+            $this->seedHostels();
+        });
+
+        // Progress feedback — the original seeder gave none after
+        // RolePermissionSeeder finished, which is why the terminal
+        // *looked* frozen even though it was still working.
+        $this->command?->info('Database seeding complete.');
     }
 
     private function seedAccounts(): void
@@ -39,6 +40,8 @@ class DatabaseSeeder extends Seeder
                 'name'=>$a['name'], 'password'=>Hash::make('password'), 'email_verified_at'=>now(),
             ])->syncRoles($a['role']);
         }
+
+        $this->command?->info('Accounts seeded: ' . count($accounts));
     }
 
     private function seedStudents(): void
@@ -54,8 +57,20 @@ class DatabaseSeeder extends Seeder
             'student_number' => 'STU-00001',
             'year_of_study'  => 1,
             'gender'         => 'female',
-            'programme'        => 'Bachelor of Computer Science',
+            'programme'      => 'Bachelor of Computer Science',
         ]);
+
+        /*
+         * User::factory(20)->create()->each() issues 20 separate INSERTs
+         * plus 20 Student upserts plus 20 syncRoles() calls — ~60+ queries.
+         * factory()->create() cannot be trivially bulk-inserted because it
+         * needs each row's auto-incrementing id back immediately to attach
+         * the Student record and role. At only 20 rows this cost is modest
+         * (a few seconds on Aiven, not tens of seconds like the permission
+         * seeder), so it is left as-is for correctness — but wrapped with
+         * progress output so it no longer looks like a freeze.
+         */
+        $this->command?->info('Seeding 20 student accounts...');
 
         User::factory(20)->create()->each(function ($u) {
             $u->syncRoles('student');
@@ -64,27 +79,77 @@ class DatabaseSeeder extends Seeder
                 'student_number' => 'STU-' . str_pad($u->id, 5, '0', STR_PAD_LEFT),
                 'year_of_study'  => fake()->numberBetween(1, 4),
                 'gender'         => fake()->randomElement(['male', 'female']),
-                'programme'        => fake()->randomElement([
-                    'Bachelor of Arts', 'Bachelor of Science',
-                    'Bachelor of Commerce', 'Bachelor of Education',
+                'programme'      => fake()->randomElement([
+                    'Bachelor of Built Environment', 'BSc Computer Science',
+                    'BSc in Information Technology', 'Diploma in Computer Science',
+                    'Bachelor of Business Administration', 'Bachelor of Education',
+                    'Bachelor of Law', 'Bachelor of Education', 'Diploma in Information Technology',
+                    'PhD in Information Systems',
                 ]),
             ]);
         });
+
+        $this->command?->info('Students seeded.');
     }
 
     private function seedHostels(): void
     {
-        foreach ($this->hostelCatalogue() as $entry) {
-            $hostel = Hostel::updateOrCreate(
-                ['slug' => $entry['hostel']['slug']],
-                collect($entry['hostel'])->except('slug')->toArray()
-            );
-            foreach ($entry['rooms'] as $roomData) {
-                $room = Room::updateOrCreate(
-                    ['hostel_id' => $hostel->id, 'slug' => $roomData['slug']],
-                    collect($roomData)->except('slug')->toArray() + ['hostel_id' => $hostel->id]
+        $catalogue = $this->hostelCatalogue();
+        $total = count($catalogue);
+
+        foreach ($catalogue as $i => $entry) {
+            try {
+                $hostel = Hostel::updateOrCreate(
+                    ['slug' => $entry['hostel']['slug']],
+                    collect($entry['hostel'])->except('slug')->toArray()
                 );
-                $room->syncBeds();
+
+                /*
+                 * BULK upsert every room for this hostel in ONE query
+                 * instead of looping updateOrCreate() per room (was
+                 * 8-14 individual queries per hostel, ~200+ total).
+                 *
+                 * upsert() requires a unique key to detect conflicts —
+                 * we use ['hostel_id', 'slug'], which matches the original
+                 * updateOrCreate() lookup key exactly, so behaviour is
+                 * unchanged.
+                 */
+                $now = now();
+                $roomRows = array_map(function (array $roomData) use ($hostel, $now) {
+                    return array_merge($roomData, [
+                        'hostel_id'  => $hostel->id,
+                        'amenities'  => json_encode($roomData['amenities']),
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }, $entry['rooms']);
+
+                Room::upsert(
+                    $roomRows,
+                    uniqueBy: ['hostel_id', 'slug'],
+                    update: [
+                        'name', 'room_number', 'room_type', 'capacity', 'bed_count',
+                        'price_per_semester', 'availability_status', 'gender_scope',
+                        'description', 'amenities', 'image_url', 'is_active', 'updated_at',
+                    ]
+                );
+
+                /*
+                 * Fetch the rooms we just upserted, then bulk-sync their
+                 * beds in a single pass (see Room::syncBeds() changes —
+                 * still one query per room's bed-set, but batched via
+                 * chunked bulk insert instead of firstOrCreate-per-bed).
+                 */
+                $rooms = Room::where('hostel_id', $hostel->id)->get();
+                foreach ($rooms as $room) {
+                    $room->syncBeds();
+                }
+
+                $this->command?->info(
+                    sprintf('[%d/%d] Seeded %s (%d rooms)', $i + 1, $total, $hostel->name, $rooms->count())
+                );
+            } catch (\Throwable $e) {
+                $this->command->error("Failed seeding {$entry['hostel']['slug']}: {$e->getMessage()}");
             }
         }
     }
@@ -215,11 +280,11 @@ class DatabaseSeeder extends Seeder
 
         for ($i = 1; $i <= $singleCount; $i++) {
             $name    = "{$pfx}-S{$i}";
-            $rooms[] = $this->roomRow($name, Str::slug("{$pfx}-S{$i}"), 'non-self-contained', 1, 450000, $gender, "Single room {$name}.");
+            $rooms[] = $this->roomRow($name, Str::slug("{$pfx}-S{$i}"), 'standard', 1, 450000, $gender, "Single room {$name}.");
         }
         for ($i = 1; $i <= $doubleCount; $i++) {
             $name    = "{$pfx}-D{$i}";
-            $rooms[] = $this->roomRow($name, Str::slug("{$pfx}-D{$i}"), 'non-self-contained', 2, 900000, $gender, "Double room {$name}. Each bed UGX 450,000.");
+            $rooms[] = $this->roomRow($name, Str::slug("{$pfx}-D{$i}"), 'standard', 2, 900000, $gender, "Double room {$name}. Each bed UGX 450,000.");
         }
         return $rooms;
     }
@@ -233,9 +298,8 @@ class DatabaseSeeder extends Seeder
     {
         $rooms = [];
         $defs  = [
-            // [type,               cap, price,   gender,   count]
-            ['non-self-contained', 1, 1268500, 'male',    4],
-            ['non-self-contained', 2, 1268500, 'male',    3],
+            ['standard', 1, 1268500, 'male',    4],
+            ['standard', 2, 1268500, 'male',    3],
             ['self-contained',     1, 1775900, 'female',  3],
             ['self-contained',     2, 1775900, 'female',  2],
             ['apartment',          1, 2029600, 'mixed',   2],
@@ -265,8 +329,8 @@ class DatabaseSeeder extends Seeder
 
         $rooms = [];
         $defs  = [
-            ['non-self-contained', 1, $baseNsc, 4],
-            ['non-self-contained', 2, $baseNsc, 4],
+            ['standard', 1, $baseNsc, 4],
+            ['standard', 2, $baseNsc, 4],
             ['self-contained',     1, $baseSc,  2],
             ['self-contained',     2, $baseSc,  2],
         ];
@@ -285,19 +349,19 @@ class DatabaseSeeder extends Seeder
     private function roomRow(string $name, string $slug, string $type, int $cap, int $price, string $gender, string $desc): array
     {
         return [
-            'name'               => $name,
-            'slug'               => $slug,
-            'room_number'         => $name,   // ← ADD THIS. e.g. "CLH-S1", "BVM-D3"
-            'room_type'          => $type,
-            'capacity'           => $cap,
-            'bed_count'          => $cap,
-            'price_per_semester' => $price,
-            'availability_status'=> 'available',
-            'gender_scope'       => $gender,
-            'description'        => $desc,
-            'amenities'          => $this->defaultAmenities($type),
-            'image_url'          => null,
-            'is_active' => true,   // ← explicit, matches DB default purely for clarity
+            'name'                => $name,
+            'slug'                => $slug,
+            'room_number'         => $name,
+            'room_type'           => $type,
+            'capacity'            => $cap,
+            'bed_count'           => $cap,
+            'price_per_semester'  => $price,
+            'availability_status' => 'available',
+            'gender_scope'        => $gender,
+            'description'         => $desc,
+            'amenities'           => $this->defaultAmenities($type),
+            'image_url'           => null,
+            'is_active'           => true,
         ];
     }
 

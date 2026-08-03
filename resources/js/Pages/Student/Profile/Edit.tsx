@@ -22,8 +22,7 @@ export default function Edit({ mustVerifyEmail, status }: EditProps) {
     <AuthenticatedLayout
       title="Account Settings"
       breadcrumbs={[
-        { label: 'Dashboard', href: route('dashboard') },
-        { label: 'Account Settings', href: route('profile.edit') },
+        { label: 'Account Settings' }
       ]}
     >
       <Head title="Account Settings – Housing@UMU" />

@@ -18,6 +18,8 @@ return new class extends Migration {
             $table->date('application_window_open')->nullable();
             $table->date('application_window_close')->nullable();
             $table->timestamps();
+            $table->softDeletes();
+            
             $table->index(['academic_year_id', 'is_current']);
         });
     }

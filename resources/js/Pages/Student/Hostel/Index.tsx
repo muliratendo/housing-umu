@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import HostelCard from '@/components/Student/HostelCard';
+import HostelCard, { type HostelCardData } from '@/components/Student/HostelCard';
 import HostelFiltersPanel, {
   type HostelFiltersPanelHandle,
 } from '@/components/Public/HostelFiltersPanel';
@@ -23,17 +23,6 @@ import BackToTop from '@/components/BackToTop';
 import type { Hostel, HostelListProps } from '@/types/hostels';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-interface HostelItem {
-  id: number;
-  name: string;
-  slug: string;
-  management_type: string;
-  gender_scope: string;
-  availability_status: string;
-  location?: string;
-  price_per_semester?: number | string;
-}
 
 interface ActiveAllocation {
   hostel_name: string;
@@ -46,7 +35,7 @@ interface Term {
 }
 
 interface Props {
-  hostels: HostelItem[];
+  hostels: HostelCardData[];
   activeAllocation?: ActiveAllocation | null;
   currentFilters: HostelListProps['currentFilters'];
   currentTerm?: Term | null;
@@ -75,7 +64,7 @@ export default function HostelIndex({
 
   const hostelList = useMemo(() => {
     if (Array.isArray(hostels)) return hostels;
-    if (hostels && typeof hostels === 'object') return Object.values(hostels) as Hostel[];
+    if (hostels && typeof hostels === 'object') return Object.values(hostels) as HostelCardData[];
     return [];
   }, [hostels]);
 
@@ -87,8 +76,8 @@ export default function HostelIndex({
     <AuthenticatedLayout
       title="Hostels"
       breadcrumbs={[
-        { label: 'Hostels', href: '' },
-        { label: '', href: '' },
+        { label: 'Dashboard', href: route('student.dashboard') },
+        { label: 'Hostels' },
       ]}
     >
       <Head title="Browse Hostels – Housing@UMU" />

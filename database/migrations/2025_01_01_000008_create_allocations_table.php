@@ -30,9 +30,12 @@ return new class extends Migration {
             $table->timestamp('checked_in_at')->nullable();
             $table->timestamp('checked_out_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
+            
             $table->index(['student_id', 'academic_term_id', 'status']);
             $table->index(['hostel_id', 'academic_term_id', 'status']);
             $table->index(['room_id', 'academic_term_id']);
+            $table->index('bed_id');
         });
     }
     public function down(): void { Schema::dropIfExists('allocations'); }

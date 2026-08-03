@@ -10,9 +10,6 @@ use App\Http\Controllers\Student\{
     HostelController,
     MaintenanceController,
 };
-use App\Http\Controllers\Admin\{
-    RoomController,
-};
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use App\Models\User;
@@ -60,7 +57,7 @@ require __DIR__.'/auth.php';
 | 3. STUDENT PORTAL UI ROUTES (Requires Auth + Verified + Student Role)
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified', 'role:student'])
+Route::middleware(['auth', 'verified', 'role:student|student_leader'])
     ->prefix('student')
     ->name('student.')
     ->group(function () {
@@ -76,16 +73,37 @@ Route::middleware(['auth', 'verified', 'role:student'])
         ->name('hostels.show');
 
     // S4 / S5a / S5b — Applications
-    Route::get('/applications', [ApplicationController::class, 'index'])
-        ->name('applications.index');
-    Route::get('/applications/create', [ApplicationController::class, 'create'])
-        ->name('applications.create');
-    Route::post('/applications', [ApplicationController::class, 'store'])
-        ->name('applications.store');
-    Route::get('/applications/{application}', [ApplicationController::class, 'show'])
-        ->name('applications.show');
-    Route::patch('/applications/draft/{formId}', [ApplicationController::class, 'saveDraft'])
-        ->name('applications.draft');
+    // File: routes/web.php — student.applications group
+    Route::prefix('applications')
+        ->name('applications.')
+        ->group(function () {
+            Route::get('/', [ApplicationController::class, 'index'])
+                ->name('index');
+            Route::get('/create', [ApplicationController::class, 'create'])
+                ->name('create');
+            Route::post('/', [ApplicationController::class, 'store'])
+                ->name('store');
+            Route::get('/{application}', [ApplicationController::class, 'show'])
+                ->name('show');
+            Route::patch('/draft/{formId}', [ApplicationController::class, 'saveDraft'])
+                ->name('draft.save');
+            Route::get('/{application}/edit', [ApplicationController::class, 'edit'])
+                ->name('edit');
+            Route::get('/{application}/resume', [ApplicationController::class, 'resume'])
+                ->name('resume');
+            Route::delete('/{application}/draft', [ApplicationController::class, 'destroyDraft'])
+                ->name('draft.destroy');
+            Route::post('applications/{application}/submit', [ApplicationController::class, 'submitDraft'])
+                ->name('submit');
+            Route::patch('/{application}', [ApplicationController::class, 'update'])
+                ->name('update');
+            Route::post('/{application}/withdraw', [ApplicationController::class, 'withdraw'])
+                ->name('withdraw');
+            Route::post('/{application}/resubmit', [ApplicationController::class, 'resubmit'])
+                ->name('resubmit');
+            Route::get('/{application}/edit', [ApplicationController::class, 'edit'])
+                ->name('edit');
+    });
 
     // S6 — Allocation Status
     Route::get('/allocation', [AllocationController::class, 'show'])
@@ -118,23 +136,7 @@ Route::middleware(['auth', 'verified', 'role:student'])
 | 4. ADMINISTRATIVE CONTROL UI ROUTES (Requires Auth + Admin Roles)
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'role:admin|super_admin|warden|dean'])
-    ->prefix('admin')
-    ->name('admin.')
-    ->group(function () {
-
-    Route::get('/dashboard', function () {
-        return Inertia::render('Admin/Dashboard');
-    })->name('dashboard');
-
-    Route::resource('rooms', RoomController::class)->only(['show']);
-        Route::post('rooms/{room}/toggle-capacity', [RoomController::class, 'toggleCapacity'])
-            ->name('rooms.toggle-capacity');
-        Route::get('rooms/{room}/beds', [RoomController::class, 'beds'])
-            ->name('rooms.beds');
-        Route::patch('beds/{bed}/status', [RoomController::class, 'updateBedStatus'])
-            ->name('beds.update-status');
-});
+require __DIR__.'/admin.php';
 
 
 /*
@@ -161,14 +163,21 @@ Route::middleware('auth')->group(function () {
 
     // ── Role-based dashboard redirect ─────────────────────────────────────
     Route::get('/dashboard', function () {
-        /** @var User|null $user */
         $user = auth()->user();
 
-        if ($user && $user->hasAnyRole(['admin', 'super_admin', 'warden', 'dean'])) {
+        if (! $user || $user->roles->isEmpty()) {
+            abort(403, 'Your account has no assigned role. Please contact the Warden\'s office.');
+        }
+
+        if ($user->hasAnyRole(['admin', 'super_admin', 'warden', 'dean', 'affiliated_admin'])) {
             return redirect()->route('admin.dashboard');
         }
 
-        return redirect()->route('student.dashboard');
+        if ($user->hasAnyRole(['student', 'student_leader'])) {
+            return redirect()->route('student.dashboard');
+        }
+
+        abort(403, 'Your account role is not recognized by the system. Contact Support');
     })->name('dashboard');
 });
 

@@ -1,9 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
-use App\Models\Application;
-use App\Models\User;
+use App\Models\{Application, User};
 
 class ApplicationPolicy
 {
@@ -12,23 +13,27 @@ class ApplicationPolicy
      */
     public function view(User $user, Application $application): bool
     {
-        // 1. If they don't have the baseline permission at all, block them immediately
         if (! $user->can('view applications')) {
             return false;
         }
 
-        // 2. High-level roles can view ANY application record
-        if ($user->hasAnyRole(['admin', 'super_admin', 'warden', 'dean'])) {
+        if ($user->hasAnyRole(['admin', 'super_admin', 'dean'])) {
             return true;
         }
 
-        // 3. Private admins can view if it belongs to an affiliated hostel they manage
-        if ($user->hasRole('affiliated_admin')) {
-            return $user->id === $application->hostel->managed_by;
+        if ($user->hasRole('warden')) {
+            return $user->managedHostels()->where('hostels.id', $application->hostel_id)->exists();
         }
 
-        // 4. Students can ONLY view their own application profile records
-        return $user->id === $application->user_id;
+        // Fixed: original checked $application->hostel->managed_by against
+        // $user->id, but Hostel has no 'managed_by' column in the schema —
+        // ownership is derived the same way as HostelPolicy/RoomPolicy.
+        if ($user->hasRole('affiliated_admin')) {
+            return $this->ownsHostel($user, $application->hostel_id);
+        }
+
+        // Students can ONLY view their own application records.
+        return $user->id === $application->student?->user_id;
     }
 
     /**
@@ -40,11 +45,60 @@ class ApplicationPolicy
             return false;
         }
 
-        if ($user->hasAnyRole(['admin', 'super_admin', 'warden'])) {
+        if ($user->hasAnyRole(['admin', 'super_admin'])) {
             return true;
         }
 
-        // Students can only update their own file if it hasn't been locked or processed yet
-        return $user->id === $application->user_id && $application->status === 'pending';
+        if ($user->hasRole('warden')) {
+            return $user->managedHostels()->where('hostels.id', $application->hostel_id)->exists();
+        }
+
+        if ($user->hasRole('affiliated_admin')) {
+            return $this->ownsHostel($user, $application->hostel_id);
+        }
+
+        // Students can only update their own application while it's still
+        // pending — once processed/allocated/rejected it's locked.
+        return $user->id === $application->student?->user_id
+            && $application->status === 'pending';
+    }
+
+    /**
+     * Process (approve/reject/waitlist) is a distinct, higher-privilege
+     * action from a generic update — separated so routes can gate on the
+     * 'process applications' permission specifically.
+     */
+    public function process(User $user, Application $application): bool
+    {
+        if (! $user->can('process applications')) {
+            return false;
+        }
+
+        if ($user->hasAnyRole(['admin', 'super_admin', 'dean'])) {
+            return true;
+        }
+
+        if ($user->hasRole('warden')) {
+            return $user->managedHostels()->where('hostels.id', $application->hostel_id)->exists();
+        }
+
+        if ($user->hasRole('affiliated_admin')) {
+            return $this->ownsHostel($user, $application->hostel_id);
+        }
+
+        return false;
+    }
+
+    private function ownsHostel(User $user, int $hostelId): bool
+    {
+        if (isset($user->hostel_id) && $user->hostel_id === $hostelId) {
+            return true;
+        }
+
+        if (method_exists($user, 'managedHostels')) {
+            return $user->managedHostels()->where('hostels.id', $hostelId)->exists();
+        }
+
+        return false;
     }
 }

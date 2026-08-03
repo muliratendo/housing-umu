@@ -1,3 +1,5 @@
+//resources/js/boostrap.ts
+
 import '../css/app.css';
 import './bootstrap';
 
