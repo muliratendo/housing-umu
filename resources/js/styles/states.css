@@ -1,0 +1,82 @@
+/* =============================================================================
+   FILE: styles/states.css
+   PURPOSE: All visual styling for loading/empty/error/success states.
+
+   ACCESSIBILITY NOTE: the shake animation on invalid form fields is capped at
+   a gentle amplitude/duration and respects prefers-reduced-motion, per WCAG
+   2.3.1 (no more than 3 flashes per second) to avoid photosensitive triggers.
+   ============================================================================= */
+
+@keyframes ux-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+
+.ux-skeleton-line, .ux-skeleton-line--avatar {
+  background: linear-gradient(90deg, #eceff1 25%, #f5f7f8 37%, #eceff1 63%);
+  background-size: 800px 100%;
+  animation: ux-shimmer 1.8s linear infinite; /* slow, steady, left-to-right */
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.ux-skeleton-line--avatar { width: 48px; height: 48px; border-radius: 50%; margin-right: 12px; }
+.ux-skeleton-card { display: flex; padding: 12px; gap: 12px; }
+.ux-skeleton-list { display: flex; flex-direction: column; gap: 8px; }
+
+@keyframes ux-spin { to { transform: rotate(360deg); } }
+.ux-spinner {
+  display: inline-block; width: 28px; height: 28px;
+  border: 3px solid #d0d7de; border-top-color: #2563eb; border-radius: 50%;
+  animation: ux-spin 0.8s linear infinite;
+}
+.ux-spinner-wrapper { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px; }
+.ux-spinner__text { font-size: 0.875rem; color: #57606a; }
+
+.ux-inline-spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.5); border-top-color: #fff; border-radius: 50%;
+  animation: ux-spin 0.7s linear infinite; vertical-align: middle;
+}
+
+.ux-progress-bar { display: flex; align-items: center; gap: 8px; padding: 12px; }
+.ux-progress-bar__track { flex: 1; height: 8px; background: #e1e4e8; border-radius: 4px; overflow: hidden; }
+.ux-progress-bar__fill { height: 100%; background: #2563eb; transition: width 0.3s ease; }
+.ux-progress-bar__track--indeterminate { position: relative; overflow: hidden; }
+.ux-progress-bar__pct { font-size: 0.8rem; color: #57606a; min-width: 3ch; text-align: right; }
+.ux-loading-stalled { padding: 16px; text-align: center; }
+.ux-loading-stalled__text { font-size: 0.85rem; color: #57606a; margin-top: 8px; }
+
+.ux-empty-state { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 40px 20px; gap: 8px; }
+.ux-empty-state--celebratory { background: linear-gradient(180deg, #f0fdf4, transparent); border-radius: 12px; }
+.ux-empty-state__title { font-size: 1.1rem; font-weight: 600; }
+.ux-empty-state__explanation { color: #57606a; max-width: 40ch; font-size: 0.9rem; }
+.ux-empty-state__actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+
+.ux-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #1f2328; color: #fff; padding: 10px 18px; border-radius: 8px;
+  font-size: 0.875rem; z-index: 1000; box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+}
+.ux-toast--success { background: #15803d; }
+
+.ux-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1100; }
+.ux-modal { background: #fff; border-radius: 12px; padding: 24px; max-width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
+.ux-modal__actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
+@keyframes ux-shake-safe { 10%,90% { transform: translateX(-1px); } 20%,80% { transform: translateX(2px); } 30%,50%,70% { transform: translateX(-3px); } 40%,60% { transform: translateX(3px); } }
+.ux-inline-error { color: #b42318; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.ux-inline-error--shake-safe { animation: ux-shake-safe 0.5s ease-in-out 1; } /* single, gentle, <3Hz — seizure-safe */
+@media (prefers-reduced-motion: reduce) {
+  .ux-inline-error--shake-safe, .ux-skeleton-line { animation: none; }
+}
+.ux-inline-error__retry { margin-left: 8px; color: #2563eb; text-decoration: underline; background: none; border: none; cursor: pointer; }
+
+.ux-field-invalid { border-color: #b42318 !important; }
+
+.ux-success-micro { color: #15803d; font-size: 0.85rem; }
+.ux-milestone-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1200; }
+.ux-milestone-card { background: #fff; border-radius: 16px; padding: 32px; text-align: center; max-width: 360px; }
+
+.ux-section-error { padding: 16px; border: 1px solid #f0c36d; background: #fff8ec; border-radius: 8px; text-align: center; }
+
+.ux-btn { padding: 8px 16px; border-radius: 8px; font-size: 0.875rem; cursor: pointer; border: 1px solid transparent; }
+.ux-btn--primary { background: #2563eb; color: #fff; }
+.ux-btn--secondary { background: #f2f4f7; color: #1f2328; }
+.ux-btn--optimistic { background: #fee2e2; color: #b42318; }

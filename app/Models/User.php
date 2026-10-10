@@ -5,6 +5,8 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use App\Models\Hostel;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -79,5 +81,17 @@ class User extends Authenticatable
     public function student(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(\App\Models\Student::class);
+    }
+
+    /**
+     * Hostels this user has been explicitly assigned to manage.
+     *
+     * Use this relation in policies and queries instead of checking a
+     * `managed_by` field on Hostel.
+     */
+    public function managedHostels(): BelongsToMany
+    {
+        return $this->belongsToMany(Hostel::class, 'hostel_managers')
+            ->withTimestamps();
     }
 }

@@ -4,9 +4,34 @@ import { router } from '@inertiajs/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-interface Column<T> { key: string; header: string; cell: (row: T) => React.ReactNode; className?: string; }
-interface Paginator { current_page: number; last_page: number; from: number; to: number; total: number; prev_page_url: string | null; next_page_url: string | null; }
-interface Props<T> { data: T[]; columns: Column<T>[]; paginator?: Paginator; emptyMessage?: string; emptyIcon?: React.ReactNode; }
+interface Column<T> {
+  key: string;
+  header: string;
+  cell: (row: T) => React.ReactNode;
+  className?: string;
+}
+
+/**
+ * Standard Laravel LengthAwarePaginator data returned through Inertia.
+ *
+ * `from` and `to` may be null when the result set is empty.
+ */
+interface Paginator {
+  current_page: number;
+  last_page: number;
+  from: number | null;
+  to: number | null;
+  total: number;
+  prev_page_url: string | null;
+  next_page_url: string | null;
+}
+interface Props<T> {
+  data: T[];
+  columns: Column<T>[];
+  paginator?: Paginator;
+  emptyMessage?: string;
+  emptyIcon?: React.ReactNode;
+}
 
 export default function DataTable<T>({ data, columns, paginator, emptyMessage = 'No data.', emptyIcon }: Props<T>) {
   if (data.length === 0) {
@@ -36,13 +61,32 @@ export default function DataTable<T>({ data, columns, paginator, emptyMessage = 
       </div>
       {paginator && paginator.last_page > 1 && (
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{paginator.from}–{paginator.to} of {paginator.total}</span>
+          <span>
+            {paginator.from ?? 0}–{paginator.to ?? 0} of {paginator.total}
+          </span>
+
           <div className="flex gap-1">
-            <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={!paginator.prev_page_url} onClick={() => goTo(paginator.prev_page_url)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 w-7 p-0"
+              disabled={!paginator.prev_page_url}
+              onClick={() => goTo(paginator.prev_page_url)}
+            >
               <ChevronLeft className="size-3.5" />
             </Button>
-            <span className="px-2 py-1">{paginator.current_page} / {paginator.last_page}</span>
-            <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={!paginator.next_page_url} onClick={() => goTo(paginator.next_page_url)}>
+
+            <span className="px-2 py-1">
+              {paginator.current_page} / {paginator.last_page}
+            </span>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 w-7 p-0"
+              disabled={!paginator.next_page_url}
+              onClick={() => goTo(paginator.next_page_url)}
+            >
               <ChevronRight className="size-3.5" />
             </Button>
           </div>

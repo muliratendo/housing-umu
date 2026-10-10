@@ -13,6 +13,7 @@ import { ReactNode } from 'react';
 import TopNav from '@/components/PublicTopNav';
 import Footer from '@/components/PublicFooter';
 import BackToTop from '@/components/BackToTop';
+import '@/styles/states.css';
 
 interface GuestLayoutProps {
   children: ReactNode;

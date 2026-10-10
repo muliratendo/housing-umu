@@ -29,10 +29,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { AlreadyLoggedInNotice } from "@/components/auth/AlreadyLoggedInNotice";
 import {
   AppSidebarDesktop,
   AppSidebarMobile,
 } from '@/components/Navigation/AppSidebar';
+import '@/styles/states.css';
 
 interface CustomPageProps {
   auth: {
@@ -247,6 +249,9 @@ export default function AuthenticatedLayout({
             {children}
           </div>
         </main>
+
+        <AlreadyLoggedInNotice />
+
 
         {/* ── FOOTER ─────────────────────────────────────────────────────── */}
         <footer className="border-t bg-background mt-auto py-6 px-4 sm:px-6 md:px-8">

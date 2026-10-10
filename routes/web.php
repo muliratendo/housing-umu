@@ -10,6 +10,10 @@ use App\Http\Controllers\Student\{
     HostelController,
     MaintenanceController,
 };
+use App\Http\Controllers\Api\Student\{
+    RecommendedHostelsController,
+    RecentActivityController,
+};
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use App\Models\User;
@@ -62,9 +66,30 @@ Route::middleware(['auth', 'verified', 'role:student|student_leader'])
     ->name('student.')
     ->group(function () {
 
-    // S1 — Dashboard
+    // S1 — Dashboard | Main Inertia dashboard page
     Route::get('/dashboard', [DashboardController::class, 'index'])
         ->name('dashboard');
+
+    // S1a — Dashboard sections loaded independently after the page renders.
+    //
+    // Developer note:
+    // These routes belong in web.php, not api.php. The app uses Laravel's
+    // cookie/session authentication through Inertia, so this route must run
+    // through the `web` middleware group to identify the logged-in student.
+    //
+    // Full URL paths:
+    // GET /student/dashboard/recommended-hostels
+    // GET /student/dashboard/recent-activity
+
+    Route::get(
+        '/dashboard/recommended-hostels',
+        RecommendedHostelsController::class,
+    )->name('dashboard.recommended-hostels');
+
+    Route::get(
+        '/dashboard/recent-activity',
+        RecentActivityController::class,
+    )->name('dashboard.recent-activity');
 
     // S2 / S3 — Hostel Browsing
     Route::get('/hostels', [HostelController::class, 'index'])

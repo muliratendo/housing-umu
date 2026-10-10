@@ -109,7 +109,7 @@ export default function HostelCard({ hostel }: Props) {
     <Card className="rounded-xl border shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col">
 
       {/* Image */}
-      <div className="relative h-40 bg-muted overflow-hidden">
+      <div className="relative h-40 w-auto bg-muted overflow-hidden">
         {image_path ? (
           <img
             src={image_path}

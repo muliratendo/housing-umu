@@ -31,6 +31,15 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
+
+            /*
+            * One-time message created by RedirectAuthenticatedFromAuthPages.
+            * Flash values do not persist through browser history navigation.
+            */
+            'flash' => [
+                'authNotice' => fn () => $request->session()->get('authNotice'),
+            ],
+
             'auth' => [
                 'user' => $request->user() ? [
                     'id' => $request->user()->id,

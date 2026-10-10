@@ -12,8 +12,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\User;
 
 /**
  * @property int $id
@@ -120,6 +122,18 @@ class Hostel extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(Allocation::class);
+    }
+
+    /**
+     * Users explicitly assigned to manage this hostel.
+     *
+     * This pivot relation is the source of truth for hostel-level management
+     * access. Do not use a non-existent `managed_by` attribute / column.
+     */
+    public function managers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'hostel_managers')
+            ->withTimestamps();
     }
 
     // ─── Alias accessors (bridge schema → API field names) ──────────────────

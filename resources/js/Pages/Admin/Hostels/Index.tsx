@@ -10,8 +10,43 @@ import OccupancyBar from '@/components/Admin/shared/OccupancyBar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import type { LaravelPaginator } from '@/types/pagination';
 
-export default function HostelsIndex({ hostels, filters }: any) {
+interface Hostel {
+  id: number;
+  name: string;
+  slug: string;
+  management_type: 'campus-managed' | 'affiliated';
+  gender_scope: 'male' | 'female' | 'mixed';
+  campus_location: 'on-campus' | 'off-campus';
+  location: string | null;
+  applications_open: boolean;
+  is_religious_order: boolean;
+  religious_notes: string | null;
+  amenities: string[] | null;
+  description: string | null;
+  image_url: string | null;
+}
+
+interface Props {
+  hostels: LaravelPaginator<Hostel>;
+  filters: {
+    search?: string;
+    management_type?: string;
+    gender_scope?: string;
+    campus_location?: string;
+  };
+  can: {
+    create: boolean;
+    manageListedHostels: boolean;
+  };
+}
+
+export default function HostelsIndex({
+  hostels,
+  filters,
+  can,
+}: Props) {
   const toggleApplications = (hostelId: number) => {
     router.patch(route('admin.hostels.toggle-applications', { hostel: hostelId }), {}, { preserveState: true, preserveScroll: true });
   };
@@ -61,9 +96,9 @@ export default function HostelsIndex({ hostels, filters }: any) {
           <Link href={route('admin.hostels.edit', { hostel: h.id })} className="text-xs text-muted-foreground flex items-center gap-1 hover:underline">
             <Pencil className="size-3" /> Edit
           </Link>
-          <Link href={route('admin.hostels.rooms', { hostel: h.id })}
+          <Link href={route('admin.hostels.manage', { hostel: h.id })}
             className="text-xs text-[#137c41] flex items-center gap-1 hover:underline">
-            Rooms <ChevronRight className="size-3" />
+            Manage <ChevronRight className="size-3" />
           </Link>
         </div>
       ), className: 'text-right'

@@ -1,76 +1,179 @@
-// resources/js/Pages/Auth/ForgotPassword.tsx — REPLACE EXISTING FILE
-
-import { FormEventHandler } from 'react';
+/**
+ * FILE: resources/js/Pages/Auth/ForgotPassword.tsx
+ *
+ * FIX (2026-09-12): clears the stale email-format error on edit and gives
+ * the "taking longer than usual" warning proper attempt identity via the
+ * patched StaleFailureGuard hook.
+ * =============================================================================
+ */
+import { FormEventHandler, useState } from 'react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 import GuestLayout from '@/Layouts/GuestLayout';
-import { Head, Link, useForm } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BackToHome } from '@/components/auth/BackToHome';
+import { ErrorState } from '@/components/states/ErrorState';
+import { SuccessState } from '@/components/states/SuccessState';
+import { LoadingIndicator } from '@/components/states/LoadingIndicator';
+import { classifyError } from '@/lib/classifyError';
+import { useFormGuard } from '@/hooks/useFormGuard';
+import { useSilentFailureGuard } from '@/components/states/StaleFailureGuard';
 
-interface Props { status?: string; }
+interface Props {
+  status?: string;
+}
 
 export default function ForgotPassword({ status }: Props) {
-  const { data, setData, post, processing, errors } = useForm({ email: '' });
+  const { data, setData, post, processing, errors, clearErrors } = useForm({
+    email: '',
+  });
 
-  const submit: FormEventHandler = (e) => {
-    e.preventDefault();
-    post(route('password.email'));
+  const guard = useFormGuard(
+    { email: '' },
+    {
+      email: {
+        required: true,
+        validate: (value) =>
+          /^\S+@\S+\.\S+$/.test(value) ? null : 'Enter a valid email address.',
+      },
+    },
+  );
+
+  const [submitted, setSubmitted] = useState(false);
+  const classified = classifyError({ status: 422 });
+
+  const submitRequest = () =>
+    new Promise<void>((resolve, reject) => {
+      post(route('password.email'), {
+        onSuccess: () => {
+          resolve();
+        },
+        onError: () => {
+          reject({ status: 422 });
+        },
+      });
+    });
+
+  const silentFailure = useSilentFailureGuard({
+    component: 'auth.forgot_password.submit',
+    userFlow: 'guest',
+    action: submitRequest,
+  });
+
+  const updateEmail = (value: string) => {
+    guard.setValue('email', value);
+    setData('email', value);
+
+    if (errors.email) {
+      clearErrors('email');
+    }
   };
+
+  const submit: FormEventHandler = (event) => {
+    event.preventDefault();
+    setSubmitted(true);
+
+    if (guard.isValid) {
+      silentFailure.run();
+    }
+  };
+
+  const isBusy = processing || silentFailure.isRunning;
 
   return (
     <GuestLayout>
-      <Head title="Forgot Password – Housing@UMU" />
+      <Head title="Forgot password" />
+      <div className="space-y-6">
+        <BackToHome />
 
-      <div className="mb-4 text-sm text-muted-foreground leading-relaxed">
-        Forgot your password? No problem. Enter your email address and we'll
-        send you a reset link so you can choose a new one.
-      </div>
-
-      {status && (
-        <div className="mb-4 text-sm font-medium text-emerald-600 bg-emerald-50
-                        border border-emerald-200 p-3 rounded-md">
-          {status}
+        <div>
+          <h1 className="text-2xl font-semibold">Reset your password</h1>
+          <p className="text-sm text-muted-foreground">
+            Enter your email and we will send a reset link if an account exists.
+          </p>
         </div>
-      )}
 
-      <form onSubmit={submit} className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="email">Email Address</Label>
-          <Input
-            id="email"
-            type="email"
-            name="email"
-            value={data.email}
-            autoFocus
-            onChange={(e) => setData('email', e.target.value)}
-            className={errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}
-            required
+        {status && (
+          <SuccessState
+            component="auth.forgot_password.status"
+            userFlow="guest"
+            reasonCode="RESET_LINK_SENT"
+            tier="toast"
+            message="If that email belongs to an account, a password reset link has been sent."
           />
-          {errors.email && (
-            <p className="text-xs font-semibold text-destructive">{errors.email}</p>
+        )}
+
+        {submitted && Boolean(errors.email) && (
+          <ErrorState
+            component="auth.forgot_password.form"
+            userFlow="guest"
+            reasonCode={classified.reasonCode}
+            userMessage="Check the email address and try again."
+            placement={classified.placement}
+          />
+        )}
+
+        {silentFailure.suspectedSilentFailure && (
+          <ErrorState
+            component="auth.forgot_password.submit"
+            userFlow="guest"
+            reasonCode="WATCHDOG_TIMEOUT"
+            userMessage="Sending the reset link is taking longer than usual. Please keep this page open while we finish."
+            placement="inline"
+            primaryAction={
+              !isBusy
+                ? { label: 'Try again', onClick: silentFailure.resubmit }
+                : undefined
+            }
+          />
+        )}
+
+        <form onSubmit={submit} className="space-y-4" noValidate>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email address</Label>
+            <Input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={data.email}
+              onChange={(event) => updateEmail(event.target.value)}
+              onBlur={() => guard.onBlur('email')}
+              aria-invalid={Boolean(guard.errors.email || errors.email)}
+              className={guard.errors.email || errors.email ? 'ux-field-invalid' : ''}
+            />
+            {guard.touched.email && guard.errors.email && (
+              <p className="ux-inline-error">{guard.errors.email}</p>
+            )}
+          </div>
+
+          {submitted && !guard.isValid && (
+            <p className="ux-inline-error">Enter your email address before continuing.</p>
           )}
-        </div>
 
-        <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <Link
-            href={route('login')}
-            className="text-xs text-muted-foreground underline hover:text-foreground transition-colors font-medium order-2 sm:order-1"
-          >
-            Back to sign in
-          </Link>
-          <Button
-            type="submit"
-            className="w-full sm:w-auto font-medium bg-brand-700 hover:bg-brand-800 text-white order-1 sm:order-2"
-            disabled={processing}
-          >
-            {processing ? 'Sending Link…' : 'Email Password Reset Link'}
+          <Button type="submit" className="w-full" disabled={isBusy || !guard.isValid}>
+            {isBusy ? (
+              <>
+                <LoadingIndicator
+                  startedAt={Date.now() - 400}
+                  preferredVariant="inline-spinner"
+                  label="Sending reset link"
+                />
+                Sending link…
+              </>
+            ) : (
+              'Email password reset link'
+            )}
           </Button>
-        </div>
-      </form>
+        </form>
 
-      <BackToHome />
+        <p className="text-center text-sm">
+          <Link className="underline" href={route('login')}>
+            Back to log in
+          </Link>
+        </p>
+      </div>
     </GuestLayout>
   );
 }

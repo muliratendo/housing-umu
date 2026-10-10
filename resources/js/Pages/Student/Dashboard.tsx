@@ -1,4 +1,21 @@
 // File: resources/js/Pages/Student/Dashboard.tsx
+//
+// =============================================================================
+// FIX (2026-08-14): "TypeError: can't access property length, o is undefined"
+//
+// ROOT CAUSE: `const applications = summary.applications ?? [];` was added
+// but never USED — the JSX below still read `summary.applications.length`
+// and `summary.applications.map(...)` directly. If `summary.applications`
+// is ever undefined (e.g. an old cached `summary` payload from before this
+// field existed, or a race on a fresh term with no cache warmed yet), the
+// direct property access crashes with exactly the error you saw.
+//
+// FIX: use the `applications` local variable (which defaults to []) in BOTH
+// places the JSX previously read `summary.applications` directly. This is
+// the same "defend at the render boundary, don't trust cached shapes" rule
+// from the UX system's EDGE_CASES.md — a backend/cache shape drift should
+// degrade to an empty state, never throw.
+// =============================================================================
 import React, { useState } from 'react';
 import { route } from 'ziggy-js';
 import { Head, Link } from '@inertiajs/react';
@@ -8,22 +25,15 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import KpiCard from '@/components/Student/KpiCard';
 import StatusPill from '@/components/Student/StatusPill';
 import NotificationBanner, { BannerVariant } from '@/components/Student/NotificationBanner';
 import QuickActions from '@/components/Student/QuickActions';
-import HostelCard, { HostelCardData } from '@/components/Student/HostelCard';
-import { cn } from '@/lib/utils';
+import RecommendedHostelsSection from '@/components/Student/RecommendedHostelsSection';
+import RecentActivitySection from '@/components/Student/RecentActivitySection';
 
-/**
- * S1 — Student Dashboard
- *
- * Props (from DashboardController::index).
- * recommendedHostels now matches HostelCardData exactly — the controller
- * must return every field HostelCard expects (see notes below).
- */
+
 interface DashboardProps {
   student: {
     name: string;
@@ -45,7 +55,10 @@ interface DashboardProps {
       status: string;
       is_retained: boolean;
     } | null;
-    applications: {
+    // FIX: mark as optional in the TYPE too, so TypeScript itself would have
+    // caught the unsafe `summary.applications.length` access below at
+    // compile time, instead of only failing at runtime in production.
+    applications?: {
       id: number;
       hostel_name: string;
       hostel_type: string;
@@ -56,14 +69,8 @@ interface DashboardProps {
     maintenance_request: { subject: string } | null;
     can_access_maintenance: boolean;
   };
-  recommendedHostels: HostelCardData[];
-  recentActivity: {
-    description: string;
-    timestamp: string;
-    status: string;
-    link: string;
-  }[];
 }
+
 
 interface BannerProps {
   message: string;
@@ -71,15 +78,18 @@ interface BannerProps {
   cta: { label: string; href: string };
 }
 
+
 export default function Dashboard({
   student,
   currentTerm,
   summary,
-  recommendedHostels,
-  recentActivity,
 }: DashboardProps) {
+  // Defends against `summary.applications` being undefined (stale cache,
+  // no-term edge case, or any future backend shape drift).
+  const applications = summary.applications ?? [];
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const isEmpty = summary.application_status === 'not_applied';
+
 
   const kpiCards = [
     {
@@ -137,10 +147,7 @@ export default function Dashboard({
     },
   ];
 
-  // ─── Notification banner logic (D1 variants) ───────────────────────────────
-  // Explicit return type + `as const` on each variant literal fixes the
-  // "Type 'string' is not assignable to type 'BannerVariant'" error, since
-  // without this TS widens 'info'/'warning' to plain `string`.
+
   const getBannerProps = (): BannerProps | null => {
     if (isEmpty && currentTerm?.is_application_window_open) {
       return {
@@ -166,7 +173,9 @@ export default function Dashboard({
     return null;
   };
 
+
   const bannerProps = getBannerProps();
+
 
   return (
     <AuthenticatedLayout
@@ -177,7 +186,9 @@ export default function Dashboard({
     >
       <Head title="Student Dashboard – Housing@UMU" />
 
+
       <div className="space-y-6 px-4 py-6 max-w-7xl mx-auto">
+
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {kpiCards.map((card) => (
@@ -185,12 +196,14 @@ export default function Dashboard({
           ))}
         </div>
 
+
         {bannerProps && !bannerDismissed && (
           <NotificationBanner
             {...bannerProps}
             onDismiss={() => setBannerDismissed(true)}
           />
         )}
+
 
         {isEmpty ? (
           <Card className="rounded-xl border shadow-sm">
@@ -267,7 +280,10 @@ export default function Dashboard({
                 </Card>
               )}
 
-              {summary.applications.length > 0 && (
+
+              {/* FIX: was `summary.applications.length > 0` — now uses the
+                  safe `applications` local variable defined above. */}
+              {applications.length > 0 && (
                 <Card className="rounded-xl border shadow-sm">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -277,7 +293,9 @@ export default function Dashboard({
                   </CardHeader>
                   <CardContent className="p-0">
                     <div className="divide-y divide-border">
-                      {summary.applications.map((app) => (
+                      {/* FIX: was `summary.applications.map(...)` — now uses
+                          the safe `applications` local variable. */}
+                      {applications.map((app) => (
                         <Link
                           key={app.id}
                           href={route('student.applications.show', app.id)}
@@ -308,85 +326,28 @@ export default function Dashboard({
               )}
             </div>
 
+
             <div className="space-y-4">
               <QuickActions canAccessMaintenance={summary.can_access_maintenance} />
             </div>
           </div>
         )}
 
-        {recommendedHostels.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-foreground">
-                {student.is_first_year ? 'Recommended On-Campus Hostels' : 'Available Hostels'}
-              </h2>
-              <Link
-                href={route('student.hostels.index')}
-                className="text-xs text-[#137c41] font-medium hover:underline flex items-center gap-1"
-              >
-                Browse all <ArrowRight className="size-3" />
-              </Link>
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recommendedHostels.map((h) => (
-                <HostelCard key={h.id} hostel={h} />
-              ))}
-            </div>
-          </section>
-        )}
+
+        <RecommendedHostelsSection isFirstYear={student.is_first_year} />
+
 
         <div className="grid lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">
-            <Card className="rounded-xl border shadow-sm h-full">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <ClipboardList className="size-4 text-[#f1b418]" />
-                  Recent Activity
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {recentActivity.length === 0 ? (
-                  <div className="flex flex-col items-center py-8 text-center gap-2">
-                    <ClipboardList className="size-10 text-muted-foreground/30" strokeWidth={1} />
-                    <p className="text-sm font-medium text-muted-foreground">No activity yet</p>
-                    <p className="text-xs text-muted-foreground">
-                      Your housing activity will appear here once you apply for accommodation.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {recentActivity.map((item, i) => (
-                      <div key={i}>
-                        {i > 0 && <Separator className="mb-3" />}
-                        <Link
-                          href={item.link}
-                          className="flex items-start justify-between gap-3 group"
-                          title={item.description}
-                        >
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-foreground group-hover:underline capitalize">
-                              {item.description}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {new Date(item.timestamp).toLocaleDateString('en-UG', {
-                                day: 'numeric', month: 'short', year: 'numeric',
-                              })}
-                            </p>
-                          </div>
-                          <StatusPill status={item.status} />
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <RecentActivitySection />
           </div>
+
 
           {isEmpty && (
             <QuickActions canAccessMaintenance={summary.can_access_maintenance} />
           )}
         </div>
+
 
       </div>
     </AuthenticatedLayout>

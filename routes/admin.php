@@ -95,62 +95,116 @@ Route::middleware([
             ->name('waitlist.promote');
 
     // ─── Hostel routes ──────────────────────────────────────────────────
+        //
+        // IMPORTANT: static paths such as /managed and /slug-availability must be
+        // declared before parameterized paths such as /{hostel}/manage, /{hostel}/edit,
+        // and /{hostel}/rooms. This prevents Laravel from attempting to resolve
+        // "managed" or "slug-availability" as a Hostel route-model-binding value.
+
+        // NEW: personal manager-scoped hostel landing page.
+        //
+        // super_admin and dean will be redirected by the controller to the full
+        // catalogue. admin, warden, and affiliated_admin receive only their
+        // hostel_managers pivot-assigned hostels.
+        Route::get('/hostels/managed', [HostelController::class, 'managed'])
+            ->middleware('permission:view hostels')
+            ->name('hostels.managed');
+
+        // NEW: lightweight JSON endpoint used by the hostel form to check whether a
+        // slug remains available while the administrator is typing. Final validation
+        // on store/update remains authoritative.
+        Route::get('/hostels/slug-availability', [HostelController::class, 'slugAvailability'])
+            ->middleware('permission:view hostels')
+            ->name('hostels.slug-availability');
+
+        // Full catalogue — controller query will still scope non-global users even
+        // when they manually enter this URL.
         Route::get('/hostels', [HostelController::class, 'index'])
             ->middleware('permission:view hostels')
             ->name('hostels.index');
 
-        // Create hostel.
+        // Create hostel — creation is enforced by HostelPolicy::create(), while this
+        // broad middleware provides the first permission-level gate.
         Route::get('/hostels/create', [HostelController::class, 'create'])
-            ->middleware('permission:view hostels')
+            ->middleware('permission:create hostels')
             ->name('hostels.create');
+
         Route::post('/hostels', [HostelController::class, 'store'])
-            ->middleware('permission:view hostels')
+            ->middleware('permission:create hostels')
             ->name('hostels.store');
+
+        // NEW: manager-facing hostel workspace. This is the account/profile-style
+        // management page that replaces the rooms-only workflow. It can show hostel
+        // identity/details plus rooms and an Edit Hostel Details action.
+        Route::get('/hostels/{hostel}/manage', [HostelController::class, 'manage'])
+            ->middleware('permission:update hostels')
+            ->name('hostels.manage');
+
+        // Existing edit page — object-level manager scoping is enforced by
+        // $this->authorize('update', $hostel) in HostelController::edit().
         Route::get('/hostels/{hostel}/edit', [HostelController::class, 'edit'])
-            ->middleware('permission:view hostels')
+            ->middleware('permission:update hostels')
             ->name('hostels.edit');
+
         Route::patch('/hostels/{hostel}', [HostelController::class, 'update'])
-            ->middleware('permission:view hostels')
+            ->middleware('permission:update hostels')
             ->name('hostels.update');
+
         Route::patch('/hostels/{hostel}/toggle-applications', [HostelController::class, 'toggleApplications'])
-            ->middleware('permission:view hostels')
+            ->middleware('permission:update hostels')
             ->name('hostels.toggle-applications');
 
-        // Show rooms for a hostel.
+        // Manager assignment is intentionally stricter than ordinary hostel updates.
+        // The route's permission middleware is broad; HostelPolicy::manageManagers()
+        // makes the final server-side decision.
+        Route::patch('/hostels/{hostel}/managers', [HostelController::class, 'syncManagers'])
+            ->middleware('permission:update hostels')
+            ->name('hostels.managers.sync');
+
+        // Legacy rooms route. Keep this if existing redirects, bookmarks, or screens
+        // still depend on it. You may later redirect it to hostels.manage.
         Route::get('/hostels/{hostel}/rooms', [HostelController::class, 'showRooms'])
-            ->middleware('permission:view rooms')
+            ->middleware('permission:update hostels')
             ->name('hostels.rooms');
 
-        // Show a single room.
+        // ─── Room routes ─────────────────────────────────────────────────────
         Route::get('/rooms/{room}', [RoomController::class, 'show'])
             ->middleware('permission:view rooms')
             ->name('rooms.show');
+
         Route::patch('/rooms/{room}/toggle-capacity', [RoomController::class, 'toggleCapacity'])
             ->middleware('permission:update rooms')
             ->name('rooms.toggle-capacity');
+
         Route::get('/hostels/{hostel}/rooms/create', [RoomController::class, 'create'])
             ->middleware('permission:view rooms')
             ->name('rooms.create');
+
         Route::post('/hostels/{hostel}/rooms', [RoomController::class, 'store'])
             ->middleware('permission:view rooms')
             ->name('rooms.store');
+
         Route::get('/rooms/{room}/edit', [RoomController::class, 'edit'])
             ->middleware('permission:update rooms')
             ->name('rooms.edit');
+
         Route::patch('/rooms/{room}', [RoomController::class, 'update'])
             ->middleware('permission:update rooms')
             ->name('rooms.update');
 
-        // Beds
+        // ─── Bed routes ──────────────────────────────────────────────────────
         Route::get('/rooms/{room}/beds', [RoomController::class, 'beds'])
             ->middleware('permission:view beds')
             ->name('rooms.beds');
+
         Route::patch('/beds/{bed}/status', [RoomController::class, 'updateStatus'])
             ->middleware('permission:update beds')
             ->name('beds.update-status');
+
         Route::post('/rooms/{room}/beds', [RoomController::class, 'storeBed'])
             ->middleware('permission:update beds')
             ->name('rooms.beds.store');
+
         Route::delete('/beds/{bed}', [RoomController::class, 'destroyBed'])
             ->middleware('permission:update beds')
             ->name('beds.destroy');

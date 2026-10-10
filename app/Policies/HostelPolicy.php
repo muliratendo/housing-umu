@@ -1,11 +1,12 @@
 <?php
-// File: app/Policies/HostelPolicy.php
+// app/Policies/HostelPolicy.php
 
 declare(strict_types=1);
 
 namespace App\Policies;
 
-use App\Models\{Hostel, User};
+use App\Models\Hostel;
+use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class HostelPolicy
@@ -13,9 +14,10 @@ class HostelPolicy
     use HandlesAuthorization;
 
     /**
-     * Gate for accessing the hostel index/listing screen at all.
-     * Object-level scoping (which specific hostels appear) is handled by
-     * AdminScope::hostelsFor() in the controller, not here.
+     * Gate for accessing a hostel listing screen.
+     *
+     * This only permits the screen itself. Controllers must still scope their
+     * queries for manager-level users through managedHostels()/managers().
      */
     public function viewAny(User $user): bool
     {
@@ -23,66 +25,47 @@ class HostelPolicy
     }
 
     /**
-     * Super admin & dean can view any hostel in the admin panel.
-     * Warden can view hostels they actively manage (managedHostels() pivot).
-     * Affiliated admin can view only the hostel(s) they own/manage.
+     * View a specific hostel.
+     *
+     * Only super_admin and dean can view every hostel. admin, warden, and
+     * affiliated_admin must be explicitly assigned through hostel_managers.
+     * Students retain public catalogue access to hostels not marked closed.
      */
-    public function adminView(User $user, Hostel $hostel): bool
+    public function view(User $user, Hostel $hostel): bool
     {
         if (! $user->can('view hostels')) {
             return false;
         }
 
-        if ($user->hasAnyRole(['admin', 'super_admin', 'dean'])) {
+        if ($this->canManageAllHostels($user)) {
             return true;
         }
 
-        if ($user->hasRole('warden')) {
-            return $user->managedHostels()->where('hostels.id', $hostel->id)->exists();
+        if ($user->hasAnyRole(['admin', 'warden', 'affiliated_admin'])) {
+            return $this->managesHostel($user, $hostel);
         }
 
-        if ($user->hasRole('affiliated_admin')) {
-            return $this->ownsHostel($user, $hostel);
-        }
-
-        return false;
+        return $user->hasRole('student')
+            && $hostel->availability_status !== 'closed';
     }
 
     /**
-     * General view: admin-tier roles fall back to adminView() with proper
-     * per-hostel ownership scoping (fixes the earlier bug where warden/
-     * affiliated_admin were checked only against a blanket management_type
-     * string, letting a warden view ANY campus-managed hostel rather than
-     * only the ones they specifically manage).
+     * Hostel creation is restricted to global catalogue managers.
      *
-     * Students can view any active hostel in the public/browsing catalogue.
-     * Gender-scope and window-open filtering happen at the query level in
-     * HostelController — this only gates raw record visibility.
-     */
-    public function view(User $user, Hostel $hostel): bool
-    {
-        if ($this->adminView($user, $hostel)) {
-            return true;
-        }
-
-        return $user->hasRole('student') && $hostel->is_active !== false;
-    }
-
-    /**
-     * Only super_admin can create new hostels — this is an MVP restriction
-     * since onboarding a new hostel (campus or affiliated) requires
-     * verifying legal/ownership documentation outside the system.
+     * Do not include ordinary `admin` here when the product rule says that
+     * only super_admin and dean manage the full hostel catalogue.
      */
     public function create(User $user): bool
     {
-        return $user->can('create hostels') && $user->hasAnyRole(['admin', 'super_admin']);
+        return $user->can('create hostels')
+            && $this->canManageAllHostels($user);
     }
 
     /**
-     * Update: super_admin/dean unrestricted. Warden scoped to managed
-     * hostels. Affiliated admin scoped to hostels they own — this is the
-     * critical ownership check: an affiliated admin must never be able to
-     * edit another affiliated admin's hostel.
+     * Update one hostel.
+     *
+     * Global catalogue managers may update every hostel. Other admin-tier
+     * users require an explicit hostel_managers assignment.
      */
     public function update(User $user, Hostel $hostel): bool
     {
@@ -90,36 +73,25 @@ class HostelPolicy
             return false;
         }
 
-        if ($user->hasAnyRole(['admin', 'super_admin', 'dean'])) {
+        if ($this->canManageAllHostels($user)) {
             return true;
         }
 
-        if ($user->hasRole('warden')) {
-            return $user->managedHostels()->where('hostels.id', $hostel->id)->exists();
-        }
-
-        if ($user->hasRole('affiliated_admin')) {
-            return $this->ownsHostel($user, $hostel);
-        }
-
-        return false;
+        return $user->hasAnyRole(['admin', 'warden', 'affiliated_admin'])
+            && $this->managesHostel($user, $hostel);
     }
 
     /**
-     * Delete: intentionally more restrictive than update. Affiliated
-     * admins cannot delete their own hostel (would orphan students with
-     * active allocations) — only super_admin can, after archival checks
-     * are handled in the service layer.
+     * Delete remains deliberately more restrictive than updating a hostel.
      */
     public function delete(User $user, Hostel $hostel): bool
     {
-        return $user->can('delete hostels') && $user->hasAnyRole(['admin', 'super_admin']);
+        return $user->can('delete hostels')
+            && $user->hasRole('super_admin');
     }
 
     /**
-     * Gate for occupancy/report screens — kept as its own permission check
-     * since 'view reports' is granted independently of 'view hostels' in
-     * the role seeder (e.g. dean has 'view reports' but limited hostel CRUD).
+     * Occupancy/report access can be granted independently of hostel CRUD.
      */
     public function viewReports(User $user): bool
     {
@@ -127,22 +99,37 @@ class HostelPolicy
     }
 
     /**
-     * Central ownership check. Supports either a direct hostel_id column
-     * on User (single-hostel affiliated admins) or a managedHostels()
-     * pivot (multi-hostel affiliated admins) — checks both so the policy
-     * keeps working regardless of which relationship pattern the app
-     * settles on.
+     * Only full-catalogue managers may grant, change, or remove manager
+     * assignments. A warden/admin must never be able to grant themselves
+     * access to another hostel by forging a PATCH request.
      */
-    private function ownsHostel(User $user, Hostel $hostel): bool
+    public function manageManagers(User $user, Hostel $hostel): bool
     {
-        if (isset($user->hostel_id) && $user->hostel_id === $hostel->id) {
-            return true;
-        }
+        return $user->can('update hostels')
+            && $this->canManageAllHostels($user);
+    }
 
-        if (method_exists($user, 'managedHostels')) {
-            return $user->managedHostels()->where('hostels.id', $hostel->id)->exists();
-        }
+    /**
+     * The deliberately narrow global role list.
+     *
+     * `admin` is excluded intentionally. It behaves like a manager-level
+     * user and must have a hostel_managers pivot assignment.
+     */
+    private function canManageAllHostels(User $user): bool
+    {
+        return $user->hasAnyRole(['super_admin', 'dean']);
+    }
 
-        return false;
+    /**
+     * Database-level existence check for the manager-to-hostel assignment.
+     *
+     * exists() avoids loading every managed hostel into memory simply to
+     * authorize one request.
+     */
+    private function managesHostel(User $user, Hostel $hostel): bool
+    {
+        return $user->managedHostels()
+            ->whereKey($hostel->id)
+            ->exists();
     }
 }

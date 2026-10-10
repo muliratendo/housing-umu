@@ -60,16 +60,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { LogoutConfirmationDialog } from "@/components/auth/LogoutConfirmationDialog";
 
 
 interface CustomPageProps {
@@ -181,7 +172,7 @@ function NavRow({ link, onClickCallback }: { link: LinkDef; onClickCallback?: ()
           }`}
         aria-hidden="true"
       />
-      <Icon className="h-4 w-4 shrink-0 opacity-80" />
+      <Icon className="h-4 w-4 shrink-0 opacity-80 text-accent-500" />
       {link.name}
     </Link>
   );
@@ -191,7 +182,7 @@ function NavRow({ link, onClickCallback }: { link: LinkDef; onClickCallback?: ()
 /** Slim uppercase section label — the ONLY separator between groups, no chevron/toggle. */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pb-1.5 text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+    <p className="px-3 pb-1.5 text-[12px] font-medium text-brand-red/90 uppercase tracking-wider">
       {children}
     </p>
   );
@@ -250,6 +241,31 @@ function CoreNavLinks({ onClickCallback }: NavLinksProps) {
  * toggle handlers, no chevrons.
  */
 function AdminNavSections({ onClickCallback }: NavLinksProps) {
+  const { auth } = usePage<CustomPageProps>().props;
+  const userRoles = auth.user?.roles ?? [];
+
+  // NEW: super_admin and dean use the full catalogue. Every other
+  // admin-type user is directed to a server-scoped "My Hostel" page,
+  // where the controller only returns hostels assigned through the
+  // hostel_managers pivot relation.
+  const canManageAllHostels = userRoles.some((role) =>
+    ['super_admin', 'dean'].includes(role),
+  );
+
+  const hostelManagementLink: LinkDef = canManageAllHostels
+    ? {
+      name: 'Manage Hostels',
+      href: route('admin.hostels.index'),
+      icon: Home,
+      routeName: 'admin.hostels.index',
+    }
+    : {
+      name: 'Manage Hostel',
+      href: route('admin.hostels.managed'),
+      icon: Home,
+      routeName: 'admin.hostels.managed',
+    };
+
   const sections: NavSection[] = [
     {
       id: 'overview',
@@ -271,7 +287,7 @@ function AdminNavSections({ onClickCallback }: NavLinksProps) {
       id: 'inventory',
       label: 'Inventory & Maintenance',
       links: [
-        { name: 'Manage Hostels', href: route('admin.hostels.index'), icon: Home, routeName: 'admin.hostels.index' },
+        hostelManagementLink,
         { name: 'Maintenance Requests', href: route('admin.maintenance.index'), icon: ClipboardList, routeName: 'admin.maintenance.index' },
         { name: 'Occupancy Reports', href: route('admin.reports.occupancy'), icon: ClipboardList, routeName: 'admin.reports.occupancy' },
       ],
@@ -280,7 +296,7 @@ function AdminNavSections({ onClickCallback }: NavLinksProps) {
       id: 'students',
       label: 'Students',
       links: [
-        { name: 'Student Registry', href: route('admin.students.index'), icon: User, routeName: 'admin.students.index' },
+        { name: 'Manage Students', href: route('admin.students.index'), icon: User, routeName: 'admin.students.index' },
         { name: 'Student Verification', href: route('admin.student-registry.verification'), icon: ClipboardList, routeName: 'admin.student-registry.verification' },
       ],
     },
@@ -360,32 +376,16 @@ function SettingsNavLinks({ onClickCallback }: NavLinksProps) {
 
 
       {/*
-        WHY AlertDialog is here and NOT wrapping the button:
+        WHY Shared AlertDialog is here and NOT wrapping the button:
         AlertDialogTrigger uses asChild which pushes a ref to its child.
         A plain <button> supports refs fine, but keeping the dialog
         state-controlled (open={logoutOpen}) is more explicit and avoids
         Radix ref-forwarding issues when this component is inside a Sheet.
       */}
-      <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sign out of Housing@UMU?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You will be redirected to the login page. Any unsaved changes
-              will be lost.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleLogout}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Sign Out
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <LogoutConfirmationDialog
+        open={logoutOpen}
+        onOpenChange={setLogoutOpen}
+      />
     </div>
   );
 }
