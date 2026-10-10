@@ -1,78 +1,73 @@
 # render.yaml
-# Blueprint for Housing@UMU Laravel app on Render, using Aiven MySQL.
-# - Runs migrations on each deploy
-# - Can optionally run seeds on major changes
-# - Rebuilds caches after deploy
+# IMPORTANT: use the exact name of your EXISTING Render service.
+# Changing the name can create a different service instead of updating it.
 
 services:
   - type: web
     name: housing-umu-web
-    env: docker
+    runtime: docker
     plan: starter
 
-    # Your repo and branch
-    repo: https://github.com/your-org/housing-umu.git
+    repo: https://github.com/muliratendo/housing-umu
     branch: main
 
-    # Docker-based Laravel as per Render’s Laravel template
     dockerfilePath: ./Dockerfile
-    buildCommand: |
-      # Install PHP deps
-      composer install --no-dev --prefer-dist --no-interaction
-      # Build front-end assets (optional; comment out if you build elsewhere)
-      npm ci
-      npm run build
+    dockerContext: .
 
-    startCommand: |
-      # 1. Run database migrations against Aiven (no data loss)
-      php artisan migrate --force
+    # Dockerfile performs the frontend and Composer builds.
+    # Dockerfile CMD starts Supervisor, Nginx, and PHP-FPM.
 
-      # 2. (Optional) Seed data on major changes.
-      #    For routine deploys, you can comment this out or guard it with an env flag.
-      # php artisan db:seed --force
+    # Runs against the configured production database.
+    # Review/back up production data before deploying schema changes.
+    preDeployCommand: php artisan migrate --force
 
-      # 3. Clear & rebuild caches so new routes/config are picked up
-      php artisan optimize:clear
-      php artisan config:cache
-      php artisan route:cache
-
-      # 4. Start Laravel via PHP-FPM + Nginx inside the Docker image
-      #    This assumes your Dockerfile + nginx config exposes port $PORT and serves /public.
-      /usr/sbin/php-fpm -D && nginx -g "daemon off;"
+    healthCheckPath: /up
 
     envVars:
-  - key: DB_CONNECTION
-    value: mysql
-  - key: DB_HOST
-    value: housingumu-housingumu.a.aivencloud.com
-  - key: DB_PORT
-    value: 21079
-  - key: DB_DATABASE
-    value: housing_umu
+      - key: PORT
+        value: "80"
 
-  # Use Render secrets for these:
-  - key: DB_USERNAME
-    fromSecret: aiven-db-username
-  - key: DB_PASSWORD
-    fromSecret: aiven-db-password
+      - key: APP_ENV
+        value: production
 
-  - key: APP_KEY
-    fromSecret: laravel-app-key
+      - key: APP_DEBUG
+        value: "false"
 
-      # Optional: use DATABASE_URL instead of individual DB_* vars if you prefer
-      # - key: DATABASE_URL
-      #   value: mysql://USER:PASSWORD@housingumu-housingumu.a.aivencloud.com:21079/housing_umu
+      - key: APP_URL
+        value: https://housing-umu.onrender.com
 
-      # Cache/session settings (Redis or file as you have locally)
-      - key: CACHE_DRIVER
+      - key: APP_KEY
+        sync: false
+
+      - key: LOG_CHANNEL
+        value: stderr
+
+      - key: LOG_LEVEL
+        value: warning
+
+      - key: DB_CONNECTION
+        value: mysql
+
+      - key: DB_HOST
+        value: housingumu-housingumu.a.aivencloud.com
+
+      - key: DB_PORT
+        value: "21079"
+
+      - key: DB_DATABASE
+        value: housing_umu
+
+      - key: DB_USERNAME
+        sync: false
+
+      - key: DB_PASSWORD
+        sync: false
+
+      - key: CACHE_STORE
         value: file
+
       - key: SESSION_DRIVER
         value: file
 
-      # Queue driver
       - key: QUEUE_CONNECTION
         value: sync
-
-    # Health check
-    healthCheckPath: /
-    autoDeploy: true
