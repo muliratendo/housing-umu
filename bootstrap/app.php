@@ -3,9 +3,20 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Spatie\Permission\Middleware\{ PermissionMiddleware, RoleMiddleware, RoleOrPermissionMiddleware };
-use App\Http\Middleware\{ SecureApiHeaders, RedirectAuthenticatedFromAuthPages };
+use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+
+use Spatie\Permission\Middleware\{
+    PermissionMiddleware,
+    RoleMiddleware,
+    RoleOrPermissionMiddleware
+};
+
+use App\Http\Middleware\{
+    HandleInertiaRequests,
+    SecureApiHeaders,
+    RedirectAuthenticatedFromAuthPages
+};
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,7 +28,14 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
-            \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+
+            // FIX: limit asset-preload Link entries to reduce response-header
+            // size. Unrestricted preload headers can exceed Nginx's default
+            // FastCGI header buffer and cause a 502 response.
+            //
+            // This limits the asset count, not total header bytes. Retain
+            // the FastCGI buffer configuration in docker/nginx.conf.
+            AddLinkHeadersForPreloadedAssets::using(10),
         ]);
 
         $middleware->statefulApi();
