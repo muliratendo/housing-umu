@@ -41,6 +41,8 @@ export interface Progress {
     total?: number;
 }
 
+export type RetryOrigin = 'automatic' | 'user';
+
 export type OperationState<T> =
     | { status: 'idle' }
     | { status: 'validating'; id: RequestIdentity }
@@ -49,6 +51,7 @@ export type OperationState<T> =
     | { status: 'progressing'; id: RequestIdentity; progress: Progress }
     | { status: 'accepted'; id: RequestIdentity; jobId: string }
     | { status: 'tracking'; id: RequestIdentity; jobId: string; progress?: Progress }
+    | { status: 'refreshing'; id: RequestIdentity; data: T }
     | { status: 'refreshing'; id: RequestIdentity; data: T }
     | { status: 'reconciling'; id: RequestIdentity; reason: 'outcome_unknown' }
     | { status: 'succeeded'; id: RequestIdentity; data?: T; effect?: string }
@@ -78,3 +81,7 @@ export const TERMINAL_STATUSES = [
     'failed',
     'unknown_failure',
 ] as const;
+
+export type RetryEligibleState<T> =
+    | Extract<OperationState<T>, { status: 'offline' | 'timed_out' }>
+    | Extract<OperationState<T>, { status: 'failed'; retryable: true }>;

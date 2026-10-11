@@ -2,11 +2,13 @@
 
 ## Current phase
 
-**Phase 1 implemented and frontend-verified; final acceptance blocked by the
-PHP baseline environment.**
+**Phase 1 corrective pass implemented and frontend-verified; final acceptance
+blocked by the PHP baseline environment.**
 
-Phase 1 is an unused framework-neutral core. No existing runtime consumer was
-migrated, and Phase 2 has not started.
+The initial Phase 1 implementation was not treated as fully accepted. This
+pass corrects registry authority, concurrency, retry, reducer, timer,
+cancellation, modal, and failure semantics. The core remains unused by all
+runtime consumers, and Phase 2 has not started.
 
 ## Workspace safety
 
@@ -66,9 +68,10 @@ Native WSL build baseline:
 - `npx tsc --noEmit`: **failed on an unrelated pre-existing error**:
   `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657:
   JSX expressions must have one parent element.`
-- `npm test`: **passed**, 2 test files and 9 tests.
+- `npm test`: **passed**, 3 test files and 18 tests.
 - Focused URLM TypeScript check with the repository baseline error excluded:
   **passed**.
+- `npm run typecheck:urlm`: **passed**.
 - `git diff --check`: passed.
 
 The TypeScript failure does not reference URLM files. It was not fixed because
@@ -93,14 +96,22 @@ Created:
 - `resources/js/lib/urlm/index.ts`
 - `resources/js/lib/urlm/core/reducer.test.ts`
 - `resources/js/lib/urlm/coordinator/coordinators.test.ts`
+- `resources/js/lib/urlm/classification/failureDescriptor.test.ts`
 - `vitest.config.ts`
+- `tsconfig.urlm.json`
 - `docs/urlm/PHASE_1_DESIGN.md`
 
 Modified:
 
 - `package.json`
-- `package-lock.json`
 - `docs/urlm/IMPLEMENTATION_STATUS.md`
+- `docs/urlm/PHASE_1_DESIGN.md`
+- `docs/urlm/IMPLEMENTATION_PLAN.md`
+- `docs/urlm/MIGRATION_MATRIX.md`
+- `docs/urlm/RISK_REGISTER.md`
+
+`package-lock.json` already contained `vitest@4.1.0` from the reviewed
+baseline and was not modified during this corrective pass.
 
 No URLM import exists outside the URLM source/tests or documentation.
 
@@ -121,19 +132,27 @@ caused by URLM production changes.
 
 ## Acceptance gates
 
-- [x] Pure reducer is total for supported event/state combinations.
-- [x] Stale identities and generations cannot change state.
-- [x] FINISH/finalization cannot create or replace an outcome.
+- [x] Pure reducer has explicit legal transitions and supported event/state
+  combinations remain total.
+- [x] Stale operation, attempt, and generation identities cannot change state.
+- [x] FINALIZE cannot create or replace an outcome.
 - [x] Retry preserves operation, correlation, and idempotency identity and
-  changes the attempt identity.
-- [x] Latest-wins rejects the previous attempt.
-- [x] Single-flight suppresses duplicate triggers.
-- [x] Timers clean up on terminal state, cancellation, supersession, and
-  disposal.
-- [x] Only one blocking modal can exist.
+  changes the attempt identity only from an eligible state.
+- [x] Latest-wins, single-flight, parallel, and FIFO queue semantics are
+  explicit and tested.
+- [x] Exact-owner completion, cancellation, disposal, and release cannot
+  affect a newer record.
+- [x] Timers and watchdogs are identity-safe across coordinators and clean up
+  on terminal state, cancellation, supersession, retry, and disposal.
+- [x] Transport-neutral cancellation handlers run at most once.
+- [x] One application-level blocking modal lease exists, with lease-safe
+  reacquisition and release.
+- [x] Failure descriptors are sanitized and distinguish cancellation from
+  timeout.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
-- [x] Frontend tests and production build pass; TypeScript is blocked only by
+- [x] URLM tests, focused URLM typecheck, and production build pass; repository
+  TypeScript is blocked only by
   the unrelated pre-existing JSX error.
 - [ ] Unaffected PHP tests run to completion; blocked by MySQL DNS.
 

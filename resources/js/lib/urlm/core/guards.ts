@@ -14,3 +14,8 @@ export const acceptsIdentity = (active: RequestIdentity | undefined, event: Requ
     active.operationId === event.operationId &&
     active.generation === event.generation &&
     active.attemptId === event.attemptId;
+
+export const isRetryEligible = <T>(state: OperationState<T>): boolean =>
+    state.status === 'offline' ||
+    state.status === 'timed_out' ||
+    (state.status === 'failed' && state.retryable);

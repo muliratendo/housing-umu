@@ -1,0 +1,12 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "types": ["vitest/globals", "node"],
+        "lib": ["esnext"],
+        "noEmit": true
+    },
+    "include": [
+        "resources/js/lib/urlm/**/*.ts",
+        "vitest.config.ts"
+    ]
+}

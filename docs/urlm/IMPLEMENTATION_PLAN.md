@@ -7,6 +7,11 @@ reducer, operation registry, timer registry, cancellation ownership, modal
 coordinator, and normalized failure descriptor. Add focused automated tests.
 Do not add Inertia or HTTP adapters and do not migrate any runtime consumer.
 
+The corrective pass must also prove exact-owner registry release, all four
+concurrency policies, profile-enforced retry origin, explicit reducer
+transitions, reachable retained states, identity-safe watchdogs,
+transport-neutral cancellation handlers, and application-wide modal leasing.
+
 ## Phase 2 — authentication vertical slice
 
 Add the minimum Inertia 2 adapter required for authentication. Migrate login as
@@ -61,7 +66,8 @@ Planned initial files (subject to repository conventions):
 - `resources/js/lib/urlm/classification/failureDescriptor.ts`
 - `resources/js/lib/urlm/testing/factories.ts`
 - `resources/js/lib/urlm/index.ts`
-- `resources/js/lib/urlm/**/*.test.ts` after test tooling approval
+- `resources/js/lib/urlm/**/*.test.ts`
+- `tsconfig.urlm.json`
 - `docs/urlm/IMPLEMENTATION_STATUS.md`
 
 ## Compatibility strategy
@@ -80,13 +86,19 @@ Phase 1 is complete only when:
 
 - the pure reducer is total for all supported event/state combinations;
 - stale identities and generations cannot change state;
-- FINISH/finalization cannot create or replace an outcome;
+- FINALIZE cannot create or replace an outcome;
 - retry preserves `operationId`, `correlationId`, and `idempotencyKey` while
   changing `attemptId`;
 - latest-wins rejects the previous attempt;
 - single-flight suppresses duplicate triggers;
 - all timers are cleaned on terminal state, cancellation, supersession, and
   disposal;
+- exact-owner completion, cancellation, disposal, and release cannot affect a
+  newer record;
+- latest-wins, single-flight, parallel, and FIFO queue behavior is explicit;
+- retry policy and retry origin are enforced;
+- every retained state has a legal transition;
+- transport cancellation handlers run at most once;
 - only one blocking modal can exist;
 - no runtime consumer has been migrated during Phase 1;
 - existing application behavior remains unchanged;
@@ -94,6 +106,6 @@ Phase 1 is complete only when:
 
 ## Baseline gate
 
-The first step is inspection and planning only. Runtime code must remain
-unchanged until this plan is reviewed. The corrected baseline command results are recorded in
-`IMPLEMENTATION_STATUS.md`.
+The initial Phase 1 implementation was not fully accepted. This corrective
+pass is recorded in `IMPLEMENTATION_STATUS.md`; runtime consumers remain
+unchanged until a later reviewed migration phase.

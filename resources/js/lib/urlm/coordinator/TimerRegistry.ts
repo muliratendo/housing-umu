@@ -1,23 +1,36 @@
+import type { RequestIdentity } from '../core/contracts';
+
+const ownerKey = (identity: RequestIdentity): string =>
+    `${identity.operationId}:${identity.attemptId}:${identity.generation}`;
+
 export class TimerRegistry {
     private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
 
-    set(operationId: string, callback: () => void, delayMs: number): void {
-        this.clear(operationId);
-        this.timers.set(operationId, setTimeout(() => {
-            this.timers.delete(operationId);
-            callback();
+    set(identity: RequestIdentity, callback: () => void, delayMs: number, isAuthoritative: () => boolean): void {
+        this.clear(identity);
+        const key = ownerKey(identity);
+        this.timers.set(key, setTimeout(() => {
+            this.timers.delete(key);
+            if (isAuthoritative()) callback();
         }, delayMs));
     }
 
-    clear(operationId: string): void {
-        const timer = this.timers.get(operationId);
+    clear(identity: RequestIdentity): void {
+        const key = ownerKey(identity);
+        const timer = this.timers.get(key);
         if (timer !== undefined) clearTimeout(timer);
-        this.timers.delete(operationId);
+        this.timers.delete(key);
     }
 
-    clearAll(): void {
-        for (const operationId of this.timers.keys()) this.clear(operationId);
+    clearAllFor(operationId: string): void {
+        for (const key of this.timers.keys()) {
+            if (key.startsWith(`${operationId}:`)) {
+                const timer = this.timers.get(key);
+                if (timer !== undefined) clearTimeout(timer);
+                this.timers.delete(key);
+            }
+        }
     }
 
-    has(operationId: string): boolean { return this.timers.has(operationId); }
+    has(identity: RequestIdentity): boolean { return this.timers.has(ownerKey(identity)); }
 }

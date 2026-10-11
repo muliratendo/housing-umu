@@ -1,7 +1,8 @@
 # URLM Phase 1 Design
 
-Phase 1 is an unused, framework-neutral lifecycle core. It does not import
-Laravel, Inertia, React, browser transport helpers, or any existing consumer.
+This is the Phase 1 corrective pass over the initial implementation. Phase 1
+is an unused, framework-neutral lifecycle core. It does not import Laravel,
+Inertia, React, browser transport helpers, or any existing consumer.
 
 ## Module boundaries
 
@@ -15,32 +16,38 @@ Laravel, Inertia, React, browser transport helpers, or any existing consumer.
 ## State and event model
 
 `OperationState` is a discriminated union. `OperationEvent` is also
-discriminated, and `reduceOperation` is pure and total. Unsupported or
-out-of-order events leave state unchanged and can emit an injectable
-diagnostic. Terminal states cannot be replaced by finalization or later
-events.
+discriminated, and `reduceOperation` is pure and total. Explicit transition
+guards reject arbitrary starts, retries, and out-of-order events with a
+sanitized diagnostic. Terminal states cannot be replaced by finalization or
+later events.
 
 ## Authority, identity, and retry
 
 Only an event matching the active operation ID, attempt ID, and generation is
-accepted. A retry preserves `operationId`, `correlationId`, and
-`idempotencyKey`, while creating a new `attemptId`. Latest-wins cancellation
-marks the previous registry record aborted; single-flight returns the existing
-record rather than starting a duplicate.
+accepted. A retry is legal only from an eligible outcome and preserves
+`operationId`, `correlationId`, and `idempotencyKey` while creating a new
+`attemptId`. Retry origin and profile policy are checked by the coordinator.
+Registry completion and cancellation require the exact operation, attempt, and
+generation owner.
 
 ## Concurrency and cancellation
 
-`OperationRegistry` owns `AbortController` instances and generations.
-`OperationCoordinator` owns the operation key and dispatches lifecycle events.
-Cancellation is explicit and disposal cancels the registry record and clears
-all timers. This is in-memory coordination only; durable mutation protection
-belongs to a later server phase.
+`OperationRegistry` is an explicit application authority exported as
+`applicationOperationRegistry`; tests and composition roots may inject an
+isolated registry. It implements latest-wins, single-flight, parallel, and
+FIFO queue semantics. It owns `AbortController` instances, transport-neutral
+cancellation handlers, generations, exact-owner release, and queue promotion.
+This is in-memory coordination only; durable mutation protection belongs to a
+later server phase.
 
 ## Timers and modal leasing
 
-`TimerRegistry` stores timers by operation ID, replaces duplicate timers, and
-clears them on terminal state or disposal. `ModalCoordinator` permits one
-blocking owner; a stale owner cannot release a newer owner.
+`TimerRegistry` stores timers by full operation identity and executes a
+watchdog only after an authority recheck. Timers are cleared on terminal state,
+cancellation, supersession, retry, and disposal without clearing another
+coordinator's timer. `applicationModalCoordinator` provides one
+application-level blocking lease; `ModalCoordinator` remains independently
+constructible for tests, and lease IDs prevent stale release.
 
 ## Diagnostics and sensitive data
 

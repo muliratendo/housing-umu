@@ -22,4 +22,11 @@
 | `ProfileController::destroy`, `User`, users migration, `ProfileTest` | retain/adapt later | Account deletion is reversible soft deletion: `User` uses `SoftDeletes`, the migration has `deleted_at`, and `delete()` sets the timestamp. It is not immediate permanent deletion and no later purge path was found. | UI copy/lifecycle says reversible deletion; tests assert the intended soft-delete contract. |
 | Database schema | adapt | Current domain tables need operation/idempotency records only for qualifying mutations. | Migrations and concurrency tests prove duplicate protection. |
 | PHPUnit configuration | retain/adapt | PHPUnit is installed and Laravel tests run; no frontend runner exists. | Add the smallest justified frontend test setup during phase 1. |
-| `package.json` | adapt later | Build exists but test/lint/typecheck scripts do not. | Add only approved test tooling and scripts required by URLM tests. |
+| `package.json` | adapt later | Build exists; Phase 1 now has only the approved Vitest and focused URLM typecheck scripts. | Keep the focused runner framework-neutral and do not add adapter/runtime scripts before Phase 2. |
+
+## Corrective-pass boundary
+
+The Phase 1 registry and coordinator are framework-neutral and remain unused by
+all listed runtime surfaces. Their in-memory concurrency and cancellation
+authority must not be mistaken for durable idempotency, reconciliation, Laravel
+authorization, or transport behavior; those remain later-phase concerns.

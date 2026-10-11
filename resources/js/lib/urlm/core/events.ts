@@ -5,6 +5,8 @@ export type OperationEvent<T> =
     | { type: 'CLIENT_INVALID'; identity: RequestIdentity; fieldErrors: FieldErrors }
     | { type: 'CLIENT_VALID'; identity: RequestIdentity; startedAt?: number }
     | { type: 'PROGRESS'; identity: RequestIdentity; progress: Progress }
+    | { type: 'TRACK_PROGRESS'; identity: RequestIdentity; jobId: string; progress?: Progress }
+    | { type: 'REFRESH_START'; identity: RequestIdentity; data: T }
     | { type: 'SERVER_ACCEPTED'; identity: RequestIdentity; jobId: string }
     | { type: 'TRACK_START'; identity: RequestIdentity; jobId: string }
     | { type: 'SERVER_VALIDATION'; identity: RequestIdentity; fieldErrors: FieldErrors }
