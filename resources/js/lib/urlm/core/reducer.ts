@@ -4,12 +4,24 @@ import type { OperationState, RequestIdentity } from './contracts';
 
 const unchanged = <T>(state: OperationState<T>): OperationState<T> => state;
 
-const diagnostic = <T>(
+const emit = <T>(
     code: Diagnostic['code'],
     event: OperationEvent<T>,
     state: OperationState<T>,
     onDiagnostic?: (value: Diagnostic) => void,
-): void => onDiagnostic?.({ code, event: event as OperationEvent<unknown>, state: state as OperationState<unknown> });
+): void => {
+    const id = 'identity' in event ? event.identity : undefined;
+    onDiagnostic?.({
+        code,
+        eventType: event.type,
+        sourceStatus: state.status,
+        ...(id ? {
+            operationRef: id.operationId.slice(0, 12),
+            attemptRef: id.attemptId.slice(0, 12),
+            generation: id.generation,
+        } : {}),
+    });
+};
 
 const sameLogicalOperation = (current: RequestIdentity, next: RequestIdentity): boolean =>
     current.operationId === next.operationId &&
@@ -19,11 +31,7 @@ const sameLogicalOperation = (current: RequestIdentity, next: RequestIdentity): 
     next.attemptId !== current.attemptId;
 
 const canReceiveOutcome = (state: OperationState<unknown>): boolean =>
-    state.status === 'submitting' ||
-    state.status === 'progressing' ||
-    state.status === 'accepted' ||
-    state.status === 'tracking' ||
-    state.status === 'refreshing';
+    ['submitting', 'progressing', 'accepted', 'tracking', 'refreshing', 'reconciling'].includes(state.status);
 
 export function reduceOperation<T>(
     state: OperationState<T>,
@@ -31,8 +39,8 @@ export function reduceOperation<T>(
     onDiagnostic?: (diagnostic: Diagnostic) => void,
 ): OperationState<T> {
     if (event.type === 'START') {
-        if (state.status !== 'idle') {
-            diagnostic('INVALID_TRANSITION', event, state, onDiagnostic);
+        if (state.status !== 'idle' && !isTerminal(state)) {
+            emit('INVALID_TRANSITION', event, state, onDiagnostic);
             return unchanged(state);
         }
         return { status: 'validating', id: event.identity };
@@ -40,60 +48,76 @@ export function reduceOperation<T>(
 
     if (event.type === 'RETRY') {
         if (!('id' in state) || !isRetryEligible(state) || !sameLogicalOperation(state.id, event.identity)) {
-            diagnostic('INVALID_TRANSITION', event, state, onDiagnostic);
+            emit('INVALID_TRANSITION', event, state, onDiagnostic);
             return unchanged(state);
         }
         return { status: 'submitting', id: event.identity, startedAt: event.startedAt ?? Date.now() };
     }
 
+    if (event.type === 'QUEUED') {
+        if (state.status === 'idle' || isTerminal(state)) {
+            return { status: 'queued', id: event.identity, position: event.position };
+        }
+        emit('INVALID_TRANSITION', event, state, onDiagnostic);
+        return unchanged(state);
+    }
+
     const active = 'id' in state ? state.id : undefined;
     if (!acceptsIdentity(active, event.identity)) {
-        diagnostic('LATE_RESPONSE_IGNORED', event, state, onDiagnostic);
+        emit('LATE_RESPONSE_IGNORED', event, state, onDiagnostic);
         return unchanged(state);
     }
     if (event.type === 'FINALIZE' || isTerminal(state)) return unchanged(state);
 
     switch (event.type) {
+        case 'PROMOTE':
+            return state.status === 'queued'
+                ? { status: 'validating', id: event.identity }
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+        case 'REVALIDATE':
+            return state.status === 'blocked'
+                ? { status: 'validating', id: event.identity }
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'CLIENT_INVALID':
             return state.status === 'validating'
                 ? { status: 'blocked', id: event.identity, fieldErrors: event.fieldErrors }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'CLIENT_VALID':
             return state.status === 'validating'
                 ? { status: 'submitting', id: event.identity, startedAt: event.startedAt ?? Date.now() }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'PROGRESS':
             return state.status === 'submitting' || state.status === 'progressing'
                 ? { status: 'progressing', id: event.identity, progress: event.progress }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'SERVER_ACCEPTED':
             return state.status === 'submitting' || state.status === 'progressing'
                 ? { status: 'accepted', id: event.identity, jobId: event.jobId }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'TRACK_START':
             return state.status === 'accepted'
                 ? { status: 'tracking', id: event.identity, jobId: event.jobId }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'TRACK_PROGRESS':
             return state.status === 'tracking'
                 ? { status: 'tracking', id: event.identity, jobId: event.jobId, progress: event.progress }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'REFRESH_START':
-            return state.status === 'validating' || state.status === 'submitting' || state.status === 'progressing'
+            return ['validating', 'submitting', 'progressing'].includes(state.status)
                 ? { status: 'refreshing', id: event.identity, data: event.data }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'SERVER_VALIDATION':
-            return state.status === 'submitting' || state.status === 'progressing'
+            return ['submitting', 'progressing'].includes(state.status)
                 ? { status: 'validation_failed', id: event.identity, fieldErrors: event.fieldErrors }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'SUCCESS':
             return canReceiveOutcome(state)
                 ? { status: 'succeeded', id: event.identity, data: event.data, effect: event.effect }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'EMPTY':
             return canReceiveOutcome(state)
                 ? { status: 'empty', id: event.identity, reasonCode: event.reasonCode }
-                : (diagnostic('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'AUTH_LOST':
             return { status: 'auth_required', id: event.identity };
         case 'FORBIDDEN':
@@ -108,6 +132,22 @@ export function reduceOperation<T>(
             return { status: 'reconciling', id: event.identity, reason: 'outcome_unknown' };
         case 'TIMEOUT':
             return { status: 'timed_out', id: event.identity, outcomeKnown: event.outcomeKnown ?? false };
+        case 'RECONCILE_SUCCESS':
+            return state.status === 'reconciling'
+                ? { status: 'succeeded', id: event.identity, data: event.data, effect: event.effect }
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+        case 'RECONCILE_FAILURE':
+            return state.status === 'reconciling'
+                ? { status: 'failed', id: event.identity, reasonCode: event.reasonCode, retryable: false }
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+        case 'RECONCILE_UNKNOWN':
+            return state.status === 'reconciling'
+                ? { status: 'unknown_failure', id: event.identity, correlationId: event.identity.correlationId }
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
+        case 'RECONCILE_CANCEL':
+            return state.status === 'reconciling'
+                ? { status: 'cancelled', id: event.identity, cause: event.cause }
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         case 'CANCEL':
             return { status: 'cancelled', id: event.identity, cause: event.cause };
         case 'FAILURE':
@@ -115,7 +155,7 @@ export function reduceOperation<T>(
         case 'UNKNOWN_FAILURE':
             return { status: 'unknown_failure', id: event.identity, correlationId: event.identity.correlationId };
         default:
-            diagnostic('INVALID_TRANSITION', event, state, onDiagnostic);
+            emit('INVALID_TRANSITION', event, state, onDiagnostic);
             return unchanged(state);
     }
 }

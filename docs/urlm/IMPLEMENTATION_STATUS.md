@@ -7,7 +7,9 @@ blocked by the PHP baseline environment.**
 
 The initial Phase 1 implementation was not treated as fully accepted. This
 pass corrects registry authority, concurrency, retry, reducer, timer,
-cancellation, modal, and failure semantics. The core remains unused by all
+cancellation, modal, queue promotion, joined observation, reconciliation,
+finalization, atomic retry replacement, diagnostics, and failure semantics.
+The core remains unused by all
 runtime consumers, and Phase 2 has not started.
 
 ## Workspace safety
@@ -68,7 +70,7 @@ Native WSL build baseline:
 - `npx tsc --noEmit`: **failed on an unrelated pre-existing error**:
   `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657:
   JSX expressions must have one parent element.`
-- `npm test`: **passed**, 3 test files and 18 tests.
+- `npm test -- --run`: **passed**, 3 test files and 20 tests.
 - Focused URLM TypeScript check with the repository baseline error excluded:
   **passed**.
 - `npm run typecheck:urlm`: **passed**.
@@ -140,6 +142,9 @@ caused by URLM production changes.
   changes the attempt identity only from an eligible state.
 - [x] Latest-wins, single-flight, parallel, and FIFO queue semantics are
   explicit and tested.
+- [x] Queue promotion, blocked validation recovery, reconciliation outcomes,
+  joined observation, and unsubscribe behavior are explicit and tested.
+- [x] Retry replacement is exact-owner and atomic, with a finite retry budget.
 - [x] Exact-owner completion, cancellation, disposal, and release cannot
   affect a newer record.
 - [x] Timers and watchdogs are identity-safe across coordinators and clean up
@@ -147,8 +152,9 @@ caused by URLM production changes.
 - [x] Transport-neutral cancellation handlers run at most once.
 - [x] One application-level blocking modal lease exists, with lease-safe
   reacquisition and release.
-- [x] Failure descriptors are sanitized and distinguish cancellation from
-  timeout.
+- [x] Failure descriptors use normalized discriminated inputs, validate HTTP
+  status/retry metadata, bound reason codes, and classify arbitrary errors as
+  unknown.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
 - [x] URLM tests, focused URLM typecheck, and production build pass; repository

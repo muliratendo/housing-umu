@@ -10,6 +10,7 @@ export const profiles = {
         retry: 'never',
         timeoutMs: 15_000,
         staleData: 'forbid',
+        retryBudget: 0,
     },
     read: {
         name: 'read',
@@ -20,5 +21,6 @@ export const profiles = {
         retry: 'safe_transient',
         timeoutMs: 10_000,
         staleData: 'allow_marked',
+        retryBudget: 2,
     },
 } satisfies Record<string, RequestProfile>;

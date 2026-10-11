@@ -10,7 +10,10 @@ Do not add Inertia or HTTP adapters and do not migrate any runtime consumer.
 The corrective pass must also prove exact-owner registry release, all four
 concurrency policies, profile-enforced retry origin, explicit reducer
 transitions, reachable retained states, identity-safe watchdogs,
-transport-neutral cancellation handlers, and application-wide modal leasing.
+transport-neutral cancellation handlers, application-wide modal leasing,
+observable queue promotion and single-flight joins, blocked-validation
+recovery, reconciliation outcomes, finalization cleanup, atomic retry
+replacement, and metadata-only diagnostics.
 
 ## Phase 2 — authentication vertical slice
 
@@ -91,8 +94,14 @@ Phase 1 is complete only when:
   changing `attemptId`;
 - latest-wins rejects the previous attempt;
 - single-flight suppresses duplicate triggers;
+- queued coordinators expose promotion and stale promotion cannot activate;
+- joined callers can observe owner state and unsubscribe;
 - all timers are cleaned on terminal state, cancellation, supersession, and
   disposal;
+- finalization releases exact resources and never invents a success outcome;
+- reconciliation can resolve to success, failure, unknown failure, or valid
+  cancellation;
+- retry has a finite budget and preserves logical identity atomically;
 - exact-owner completion, cancellation, disposal, and release cannot affect a
   newer record;
 - latest-wins, single-flight, parallel, and FIFO queue behavior is explicit;

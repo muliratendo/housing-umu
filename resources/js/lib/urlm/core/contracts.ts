@@ -32,6 +32,7 @@ export interface RequestProfile {
     retry: RetryPolicy;
     timeoutMs: number;
     staleData: 'forbid' | 'allow_marked' | 'allow_silent_refresh';
+    retryBudget?: number;
 }
 
 export type FieldErrors = Record<string, string[]>;
@@ -52,7 +53,7 @@ export type OperationState<T> =
     | { status: 'accepted'; id: RequestIdentity; jobId: string }
     | { status: 'tracking'; id: RequestIdentity; jobId: string; progress?: Progress }
     | { status: 'refreshing'; id: RequestIdentity; data: T }
-    | { status: 'refreshing'; id: RequestIdentity; data: T }
+    | { status: 'queued'; id: RequestIdentity; position: number }
     | { status: 'reconciling'; id: RequestIdentity; reason: 'outcome_unknown' }
     | { status: 'succeeded'; id: RequestIdentity; data?: T; effect?: string }
     | { status: 'empty'; id: RequestIdentity; reasonCode: string }

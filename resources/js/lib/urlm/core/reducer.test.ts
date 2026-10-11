@@ -43,33 +43,35 @@ describe('URLM reducer', () => {
         expect(diagnostics).toEqual(['LATE_RESPONSE_IGNORED', 'LATE_RESPONSE_IGNORED', 'LATE_RESPONSE_IGNORED']);
     });
 
-    it('reaches every retained state through a legal event', () => {
+    it('reaches retained states through exact legal paths', () => {
         const identity = identityFactory();
-        const paths: Array<OperationEvent<unknown>> = [
-            { type: 'CLIENT_INVALID', identity, fieldErrors: { email: ['invalid'] } },
-            { type: 'CLIENT_VALID', identity },
-            { type: 'PROGRESS', identity, progress: { loaded: 1, total: 2 } },
-            { type: 'SERVER_ACCEPTED', identity, jobId: 'job' },
-            { type: 'TRACK_START', identity, jobId: 'job' },
-            { type: 'TRACK_PROGRESS', identity, jobId: 'job', progress: { loaded: 2, total: 2 } },
-            { type: 'REFRESH_START', identity, data: [] },
-            { type: 'SUCCESS', identity, data: [] },
-            { type: 'EMPTY', identity, reasonCode: 'none' },
-            { type: 'AUTH_LOST', identity },
-            { type: 'FORBIDDEN', identity, reasonCode: 'denied' },
-            { type: 'CONFLICT', identity, serverVersion: '2' },
-            { type: 'RATE_LIMIT', identity, retryAt: 10 },
-            { type: 'NETWORK_LOST', identity },
-            { type: 'TIMEOUT_UNKNOWN', identity },
-            { type: 'TIMEOUT', identity, outcomeKnown: false },
-            { type: 'CANCEL', identity, cause: 'user' },
-            { type: 'FAILURE', identity, reasonCode: 'failed', retryable: true },
-            { type: 'UNKNOWN_FAILURE', identity },
-        ];
-        for (const event of paths) {
-            const [active] = start<unknown>(identity);
-            expect(reduceOperation(active, event).status).toBeDefined();
-        }
+        const active = start<unknown>(identity)[0];
+        expect(reduceOperation(active, { type: 'CLIENT_INVALID', identity, fieldErrors: { email: ['invalid'] } }).status).toBe('blocked');
+        expect(reduceOperation(active, { type: 'CLIENT_VALID', identity }).status).toBe('submitting');
+        const submitting = reduceOperation(active, { type: 'CLIENT_VALID', identity });
+        expect(reduceOperation(submitting, { type: 'PROGRESS', identity, progress: { loaded: 1, total: 2 } }).status).toBe('progressing');
+        expect(reduceOperation(submitting, { type: 'SERVER_ACCEPTED', identity, jobId: 'job' }).status).toBe('accepted');
+        const accepted = reduceOperation(submitting, { type: 'SERVER_ACCEPTED', identity, jobId: 'job' });
+        expect(reduceOperation(accepted, { type: 'TRACK_START', identity, jobId: 'job' }).status).toBe('tracking');
+        expect(reduceOperation(submitting, { type: 'REFRESH_START', identity, data: [] }).status).toBe('refreshing');
+        expect(reduceOperation(submitting, { type: 'SUCCESS', identity, data: [] }).status).toBe('succeeded');
+        expect(reduceOperation(submitting, { type: 'EMPTY', identity, reasonCode: 'none' }).status).toBe('empty');
+        expect(reduceOperation(active, { type: 'AUTH_LOST', identity }).status).toBe('auth_required');
+        expect(reduceOperation(active, { type: 'FORBIDDEN', identity, reasonCode: 'denied' }).status).toBe('forbidden');
+        expect(reduceOperation(active, { type: 'CONFLICT', identity, serverVersion: '2' }).status).toBe('conflicted');
+        expect(reduceOperation(active, { type: 'RATE_LIMIT', identity, retryAt: 10 }).status).toBe('throttled');
+        expect(reduceOperation(active, { type: 'NETWORK_LOST', identity }).status).toBe('offline');
+        expect(reduceOperation(active, { type: 'TIMEOUT_UNKNOWN', identity }).status).toBe('reconciling');
+        expect(reduceOperation(active, { type: 'TIMEOUT', identity, outcomeKnown: false }).status).toBe('timed_out');
+        expect(reduceOperation(active, { type: 'CANCEL', identity, cause: 'user' }).status).toBe('cancelled');
+        expect(reduceOperation(active, { type: 'FAILURE', identity, reasonCode: 'failed', retryable: true }).status).toBe('failed');
+        expect(reduceOperation(active, { type: 'UNKNOWN_FAILURE', identity }).status).toBe('unknown_failure');
+        const blocked = reduceOperation(active, { type: 'CLIENT_INVALID', identity, fieldErrors: {} });
+        expect(reduceOperation(blocked, { type: 'REVALIDATE', identity }).status).toBe('validating');
+        const reconciling = reduceOperation(active, { type: 'TIMEOUT_UNKNOWN', identity });
+        expect(reduceOperation(reconciling, { type: 'RECONCILE_SUCCESS', identity, data: [] }).status).toBe('succeeded');
+        expect(reduceOperation(reconciling, { type: 'RECONCILE_FAILURE', identity, reasonCode: 'not-found' }).status).toBe('failed');
+        expect(reduceOperation(reconciling, { type: 'RECONCILE_UNKNOWN', identity }).status).toBe('unknown_failure');
     });
 
     it('preserves terminal outcomes and makes finalization observational only', () => {

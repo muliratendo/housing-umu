@@ -170,4 +170,52 @@ describe('URLM coordination', () => {
         expect(callback).not.toHaveBeenCalled();
         vi.useRealTimers();
     });
+
+    it('activates queued coordinators and exposes joined owner state', () => {
+        const registry = new OperationRegistry();
+        const owner = new OperationCoordinator('queued', { ...profiles.read, concurrency: 'queue' }, registry);
+        const waiting = new OperationCoordinator('queued', { ...profiles.read, concurrency: 'queue' }, registry);
+        const first = startedIdentity(owner.start());
+        const queued = waiting.start();
+        expect(queued?.kind).toBe('queued');
+        if (!queued || queued.kind !== 'queued') return;
+        expect(waiting.getState().status).toBe('queued');
+        owner.cancel();
+        expect(waiting.getState().status).toBe('validating');
+
+        const joinedProfile = { ...profiles.read, concurrency: 'single_flight' as const };
+        const joinedOwner = new OperationCoordinator('joined', joinedProfile, registry);
+        const joinedFollower = new OperationCoordinator('joined', joinedProfile, registry);
+        const joinedIdentity = startedIdentity(joinedOwner.start());
+        const joined = joinedFollower.start();
+        expect(joined?.kind).toBe('joined');
+        if (!joined || joined.kind !== 'joined') return;
+        const observed: string[] = [];
+        const unsubscribe = joined.subscribe((state) => observed.push(state.status));
+        joinedOwner.dispatch({ type: 'CLIENT_VALID', identity: joinedIdentity });
+        joinedOwner.dispatch({ type: 'SUCCESS', identity: joinedIdentity });
+        unsubscribe();
+        expect(observed).toEqual(['validating', 'submitting', 'succeeded']);
+        expect(joined.getState()?.status).toBe('succeeded');
+        expect(first.operationId).not.toBe(queued.identity.operationId);
+    });
+
+    it('finalizes missing outcomes and preserves atomic retry ownership', () => {
+        const registry = new OperationRegistry();
+        const coordinator = new OperationCoordinator('finalize', { ...profiles.read, retry: 'safe_transient' }, registry);
+        const identity = startedIdentity(coordinator.start());
+        expect(coordinator.finalize(identity)).toMatchObject({ kind: 'released', outcome: 'outcome_missing' });
+        expect(coordinator.getState().status).toBe('unknown_failure');
+        expect(registry.getByIdentity(identity)).toBeUndefined();
+
+        const retryable = new OperationCoordinator('atomic', { ...profiles.read, retry: 'safe_transient' }, registry);
+        const first = startedIdentity(retryable.start());
+        retryable.dispatch({ type: 'NETWORK_LOST', identity: first });
+        const retry = retryable.retry('user');
+        expect(retry.kind).toBe('started');
+        if (retry.kind === 'started') {
+            expect(retry.identity.attemptId).not.toBe(first.attemptId);
+            expect(registry.isCurrent('atomic', retry.identity)).toBe(true);
+        }
+    });
 });
