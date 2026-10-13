@@ -30,3 +30,14 @@ The Phase 1 registry and coordinator are framework-neutral and remain unused by
 all listed runtime surfaces. Their in-memory concurrency and cancellation
 authority must not be mistaken for durable idempotency, reconciliation, Laravel
 authorization, or transport behavior; those remain later-phase concerns.
+
+## Phase 1 authority corrections
+
+The coordinator owns one unresolved lifecycle. A queued handle exposes
+framework-neutral activation and joined observers attach to a logical-operation
+channel rather than an individual attempt. Exact identity includes operation,
+attempt, correlation, generation, and idempotency-key presence. Publication is
+accepted-transition-only; rejected stale or foreign events cannot populate
+another operation's snapshot. Finalization stops transport and returns
+`needs_outcome_classification` when no outcome exists; it does not classify the
+outcome itself.

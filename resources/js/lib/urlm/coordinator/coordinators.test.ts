@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModalCoordinator } from './ModalCoordinator';
 import { OperationCoordinator } from './OperationCoordinator';
 import { OperationRegistry } from './OperationRegistry';
@@ -11,6 +11,7 @@ const startedIdentity = (result: ReturnType<OperationCoordinator<unknown>['start
 };
 
 describe('URLM coordination', () => {
+    afterEach(() => vi.useRealTimers());
     it('preserves logical identity and changes attempt identity on retry', () => {
         const coordinator = new OperationCoordinator('read', { ...profiles.read, retry: 'safe_transient' });
         const first = startedIdentity(coordinator.start('key'));
@@ -204,9 +205,9 @@ describe('URLM coordination', () => {
         const registry = new OperationRegistry();
         const coordinator = new OperationCoordinator('finalize', { ...profiles.read, retry: 'safe_transient' }, registry);
         const identity = startedIdentity(coordinator.start());
-        expect(coordinator.finalize(identity)).toMatchObject({ kind: 'released', outcome: 'outcome_missing' });
-        expect(coordinator.getState().status).toBe('unknown_failure');
-        expect(registry.getByIdentity(identity)).toBeUndefined();
+        expect(coordinator.finalize(identity)).toEqual({ kind: 'needs_outcome_classification' });
+        expect(coordinator.getState().status).toBe('awaiting_outcome');
+        expect(registry.getByIdentity(identity)).toBeDefined();
 
         const retryable = new OperationCoordinator('atomic', { ...profiles.read, retry: 'safe_transient' }, registry);
         const first = startedIdentity(retryable.start());
@@ -217,5 +218,65 @@ describe('URLM coordination', () => {
             expect(retry.identity.attemptId).not.toBe(first.attemptId);
             expect(registry.isCurrent('atomic', retry.identity)).toBe(true);
         }
+    });
+
+    it('does not publish a foreign event through another coordinator', () => {
+        const registry = new OperationRegistry();
+        const one = new OperationCoordinator('one', { ...profiles.read, concurrency: 'parallel' }, registry);
+        const two = new OperationCoordinator('two', { ...profiles.read, concurrency: 'parallel' }, registry);
+        const first = startedIdentity(one.start());
+        const second = startedIdentity(two.start());
+        const received: string[] = [];
+        registry.observe(second, (state) => received.push(state.status));
+        const beforeOne = one.getState();
+        const beforeTwo = two.getState();
+        one.dispatch({ type: 'SUCCESS', identity: second });
+        expect(one.getState()).toBe(beforeOne);
+        expect(two.getState()).toBe(beforeTwo);
+        expect(received).toEqual(['validating']);
+        expect(registry.getState(second)).toBe(beforeTwo);
+        expect(first.operationId).not.toBe(second.operationId);
+    });
+
+    it('keeps joined observers across retry and reports cancellation once', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'single_flight' as const };
+        const owner = new OperationCoordinator('joined-retry', profile, registry);
+        const follower = new OperationCoordinator('joined-retry', profile, registry);
+        const first = startedIdentity(owner.start('stable'));
+        const joined = follower.start();
+        expect(joined?.kind).toBe('joined');
+        if (!joined || joined.kind !== 'joined') return;
+        const states: string[] = [];
+        const unsubscribe = joined.subscribe((state) => states.push(state.status));
+        owner.dispatch({ type: 'NETWORK_LOST', identity: first });
+        const retry = owner.retry('user');
+        expect(retry.kind).toBe('started');
+        if (retry.kind !== 'started') return;
+        owner.dispatch({ type: 'CANCEL', identity: retry.identity, cause: 'user' });
+        unsubscribe();
+        expect(states).toEqual(['validating', 'offline', 'submitting', 'cancelled']);
+    });
+
+    it('prevents one coordinator from owning two parallel lifecycles', () => {
+        const coordinator = new OperationCoordinator('one-owner', { ...profiles.read, concurrency: 'parallel' });
+        const first = startedIdentity(coordinator.start());
+        const second = coordinator.start();
+        expect(second).toEqual({ kind: 'already_owner', identity: first });
+        coordinator.cancel();
+        expect(coordinator.getState().status).toBe('cancelled');
+    });
+
+    it('isolates observer and cancellation callback failures', () => {
+        const registry = new OperationRegistry();
+        const coordinator = new OperationCoordinator('callbacks', profiles.read, registry);
+        const identity = startedIdentity(coordinator.start());
+        const received: string[] = [];
+        registry.observe(identity, () => { throw new Error('observer secret'); });
+        registry.observe(identity, (state) => received.push(state.status));
+        coordinator.registerCancellation(() => { throw new Error('handler secret'); });
+        expect(() => coordinator.cancel('transport')).not.toThrow();
+        expect(received).toEqual(['validating', 'cancelled']);
+        expect(registry.activeRecordCount()).toBe(0);
     });
 });

@@ -54,6 +54,7 @@ export type OperationState<T> =
     | { status: 'tracking'; id: RequestIdentity; jobId: string; progress?: Progress }
     | { status: 'refreshing'; id: RequestIdentity; data: T }
     | { status: 'queued'; id: RequestIdentity; position: number }
+    | { status: 'awaiting_outcome'; id: RequestIdentity }
     | { status: 'reconciling'; id: RequestIdentity; reason: 'outcome_unknown' }
     | { status: 'succeeded'; id: RequestIdentity; data?: T; effect?: string }
     | { status: 'empty'; id: RequestIdentity; reasonCode: string }

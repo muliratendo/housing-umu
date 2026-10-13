@@ -37,10 +37,11 @@ describe('URLM reducer', () => {
             { type: 'SUCCESS', identity: { ...identity, operationId: 'old' }, data: 1 },
             { type: 'SUCCESS', identity: { ...identity, attemptId: 'old' }, data: 2 },
             { type: 'SUCCESS', identity: { ...identity, generation: identity.generation - 1 }, data: 3 },
+            { type: 'SUCCESS', identity: { ...identity, correlationId: 'corr_other' }, data: 4 },
         ] as const;
         for (const event of events) reduceOperation(state, event, (value) => diagnostics.push(value.code));
         expect(state.status).toBe('validating');
-        expect(diagnostics).toEqual(['LATE_RESPONSE_IGNORED', 'LATE_RESPONSE_IGNORED', 'LATE_RESPONSE_IGNORED']);
+        expect(diagnostics).toEqual(['LATE_RESPONSE_IGNORED', 'LATE_RESPONSE_IGNORED', 'LATE_RESPONSE_IGNORED', 'LATE_RESPONSE_IGNORED']);
     });
 
     it('reaches retained states through exact legal paths', () => {

@@ -5,6 +5,10 @@
 **Phase 1 corrective pass implemented and frontend-verified; final acceptance
 blocked by the PHP baseline environment.**
 
+Required base commit verified: `cc228be9392f4f945ddd3cc5ee88bc2518894ecc`.
+This document records a correction pass for review; it does not grant Phase 1
+acceptance.
+
 The initial Phase 1 implementation was not treated as fully accepted. This
 pass corrects registry authority, concurrency, retry, reducer, timer,
 cancellation, modal, queue promotion, joined observation, reconciliation,
@@ -15,8 +19,9 @@ runtime consumers, and Phase 2 has not started.
 ## Workspace safety
 
 Pre-existing changes were observed and left untouched: an `artisan` executable
-bit change, Windows image `Zone.Identifier` sidecars, and the prior planning
-documents. No Laravel runtime file, route, controller, model, migration,
+bit change; deleted `public/images/hostels/*.jpg` Windows
+`Zone.Identifier` sidecars with corresponding untracked colon-named sidecars;
+and prior planning documents. No Laravel runtime file, route, controller, model, migration,
 existing React component, hook, request utility, database file, or existing
 test was changed by Phase 1.
 
@@ -70,7 +75,7 @@ Native WSL build baseline:
 - `npx tsc --noEmit`: **failed on an unrelated pre-existing error**:
   `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657:
   JSX expressions must have one parent element.`
-- `npm test -- --run`: **passed**, 3 test files and 20 tests.
+- `npm test -- --run`: **passed**, 3 test files and 24 tests.
 - Focused URLM TypeScript check with the repository baseline error excluded:
   **passed**.
 - `npm run typecheck:urlm`: **passed**.
@@ -111,6 +116,8 @@ Modified:
 - `docs/urlm/IMPLEMENTATION_PLAN.md`
 - `docs/urlm/MIGRATION_MATRIX.md`
 - `docs/urlm/RISK_REGISTER.md`
+- `resources/js/lib/urlm/core/guards.ts`
+- `resources/js/lib/urlm/coordinator/TimerRegistry.ts`
 
 `package-lock.json` already contained `vitest@4.1.0` from the reviewed
 baseline and was not modified during this corrective pass.
@@ -155,6 +162,15 @@ caused by URLM production changes.
 - [x] Failure descriptors use normalized discriminated inputs, validate HTTP
   status/retry metadata, bound reason codes, and classify arbitrary errors as
   unknown.
+- [x] Publication requires an accepted reducer result and exact current
+  ownership; rejected foreign/stale events do not notify observers.
+- [x] One coordinator owns one unresolved lifecycle; parallel work requires
+  separate coordinator instances.
+- [x] Logical observer channels survive retry replacement, cancellation is
+  notified before release, and callback exceptions are isolated.
+- [x] Finalization returns `needs_outcome_classification` and uses
+  `awaiting_outcome`; it does not invent an outcome.
+- [x] Terminal snapshots use a bounded retention policy.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
 - [x] URLM tests, focused URLM typecheck, and production build pass; repository
@@ -185,4 +201,7 @@ caused by URLM production changes.
 - `npm ci` reported 26 dependency audit findings (7 moderate, 17 high, 2
   critical); no automated audit remediation was attempted because it would be
   outside Phase 1 scope.
+- The current focused tests cover the principal authority, publication,
+  cancellation, retry, queue, finalization, and secret-safety invariants, but
+  Phase 1 remains pending explicit review and the blocked PHP baseline.
 - Phase 2 must not begin until this review is complete.

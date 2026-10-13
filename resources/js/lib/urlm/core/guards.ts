@@ -7,13 +7,16 @@ export const sameIdentity = (a: RequestIdentity, b: RequestIdentity): boolean =>
     a.operationId === b.operationId &&
     a.attemptId === b.attemptId &&
     a.correlationId === b.correlationId &&
-    a.generation === b.generation;
+    a.generation === b.generation &&
+    a.idempotencyKey === b.idempotencyKey;
 
 export const acceptsIdentity = (active: RequestIdentity | undefined, event: RequestIdentity): boolean =>
     active !== undefined &&
     active.operationId === event.operationId &&
     active.generation === event.generation &&
-    active.attemptId === event.attemptId;
+    active.attemptId === event.attemptId &&
+    active.correlationId === event.correlationId &&
+    active.idempotencyKey === event.idempotencyKey;
 
 export const isRetryEligible = <T>(state: OperationState<T>): boolean =>
     state.status === 'offline' ||

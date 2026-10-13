@@ -85,7 +85,8 @@ next begins.
 
 ## Phase 1 acceptance gates
 
-Phase 1 is complete only when:
+Phase 1 is not accepted until every gate below is demonstrated by a focused
+test and the environmental baselines are reviewed:
 
 - the pure reducer is total for all supported event/state combinations;
 - stale identities and generations cannot change state;
@@ -94,11 +95,22 @@ Phase 1 is complete only when:
   changing `attemptId`;
 - latest-wins rejects the previous attempt;
 - single-flight suppresses duplicate triggers;
+- one coordinator cannot own two unresolved lifecycles, including parallel or
+  queued profiles;
+- exact identity includes operation, attempt, correlation, generation, and
+  idempotency-key presence;
+- rejected stale/foreign/invalid events never publish;
+- joined observers survive retry and receive cancellation exactly once;
+- queued handles expose one-shot activation and throwing callbacks cannot block
+  promotion;
 - queued coordinators expose promotion and stale promotion cannot activate;
 - joined callers can observe owner state and unsubscribe;
 - all timers are cleaned on terminal state, cancellation, supersession, and
   disposal;
-- finalization releases exact resources and never invents a success outcome;
+- finalization releases exact resources and returns
+  `needs_outcome_classification` without inventing success or failure;
+- terminal snapshots are bounded and logical observer channels do not leak;
+- arbitrary callback failures cannot interrupt cleanup or promotion;
 - reconciliation can resolve to success, failure, unknown failure, or valid
   cancellation;
 - retry has a finite budget and preserves logical identity atomically;

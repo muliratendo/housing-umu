@@ -11,7 +11,9 @@ export class TimerRegistry {
         const key = ownerKey(identity);
         this.timers.set(key, setTimeout(() => {
             this.timers.delete(key);
-            if (isAuthoritative()) callback();
+            if (isAuthoritative()) {
+                try { callback(); } catch { /* watchdog failures cannot interrupt timer cleanup */ }
+            }
         }, delayMs));
     }
 

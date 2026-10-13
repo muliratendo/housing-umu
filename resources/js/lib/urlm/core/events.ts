@@ -30,7 +30,8 @@ export type OperationEvent<T> =
     | { type: 'FAILURE'; identity: RequestIdentity; reasonCode: string; retryable: boolean }
     | { type: 'UNKNOWN_FAILURE'; identity: RequestIdentity }
     | { type: 'RETRY'; identity: RequestIdentity; startedAt?: number }
-    | { type: 'FINALIZE'; identity: RequestIdentity };
+    | { type: 'FINALIZE'; identity: RequestIdentity }
+    | { type: 'OUTCOME_REQUIRED'; identity: RequestIdentity };
 
 export type Diagnostic = {
     code: 'LATE_RESPONSE_IGNORED' | 'INVALID_TRANSITION';

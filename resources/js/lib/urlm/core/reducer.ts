@@ -2,6 +2,12 @@ import type { Diagnostic, OperationEvent } from './events';
 import { acceptsIdentity, isRetryEligible, isTerminal } from './guards';
 import type { OperationState, RequestIdentity } from './contracts';
 
+export type ReductionKind = 'accepted' | 'accepted_noop' | 'rejected_invalid' | 'rejected_stale';
+export interface ReductionResult<T> {
+    readonly kind: ReductionKind;
+    readonly state: OperationState<T>;
+}
+
 const unchanged = <T>(state: OperationState<T>): OperationState<T> => state;
 
 const emit = <T>(
@@ -11,16 +17,20 @@ const emit = <T>(
     onDiagnostic?: (value: Diagnostic) => void,
 ): void => {
     const id = 'identity' in event ? event.identity : undefined;
-    onDiagnostic?.({
-        code,
-        eventType: event.type,
-        sourceStatus: state.status,
-        ...(id ? {
-            operationRef: id.operationId.slice(0, 12),
-            attemptRef: id.attemptId.slice(0, 12),
-            generation: id.generation,
-        } : {}),
-    });
+    try {
+        onDiagnostic?.({
+            code,
+            eventType: event.type,
+            sourceStatus: state.status,
+            ...(id ? {
+                operationRef: id.operationId.slice(0, 12),
+                attemptRef: id.attemptId.slice(0, 12),
+                generation: id.generation,
+            } : {}),
+        });
+    } catch {
+        // Diagnostic sinks are observational and cannot affect lifecycle authority.
+    }
 };
 
 const sameLogicalOperation = (current: RequestIdentity, next: RequestIdentity): boolean =>
@@ -31,7 +41,7 @@ const sameLogicalOperation = (current: RequestIdentity, next: RequestIdentity): 
     next.attemptId !== current.attemptId;
 
 const canReceiveOutcome = (state: OperationState<unknown>): boolean =>
-    ['submitting', 'progressing', 'accepted', 'tracking', 'refreshing', 'reconciling'].includes(state.status);
+    ['submitting', 'progressing', 'accepted', 'tracking', 'refreshing', 'reconciling', 'awaiting_outcome'].includes(state.status);
 
 export function reduceOperation<T>(
     state: OperationState<T>,
@@ -43,6 +53,7 @@ export function reduceOperation<T>(
             emit('INVALID_TRANSITION', event, state, onDiagnostic);
             return unchanged(state);
         }
+
         return { status: 'validating', id: event.identity };
     }
 
@@ -66,6 +77,11 @@ export function reduceOperation<T>(
     if (!acceptsIdentity(active, event.identity)) {
         emit('LATE_RESPONSE_IGNORED', event, state, onDiagnostic);
         return unchanged(state);
+    }
+    if (event.type === 'OUTCOME_REQUIRED') {
+        return ['validating', 'submitting', 'progressing', 'accepted', 'tracking', 'refreshing', 'reconciling'].includes(state.status)
+            ? { status: 'awaiting_outcome', id: event.identity }
+            : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
     }
     if (event.type === 'FINALIZE' || isTerminal(state)) return unchanged(state);
 
@@ -158,4 +174,22 @@ export function reduceOperation<T>(
             emit('INVALID_TRANSITION', event, state, onDiagnostic);
             return unchanged(state);
     }
+}
+
+export function reduceOperationResult<T>(
+    state: OperationState<T>,
+    event: OperationEvent<T>,
+    onDiagnostic?: (diagnostic: Diagnostic) => void,
+): ReductionResult<T> {
+    const active = 'id' in state ? state.id : undefined;
+    if (event.type !== 'START' && event.type !== 'RETRY' && event.type !== 'QUEUED' &&
+        (!active || !acceptsIdentity(active, event.identity))) {
+        return { kind: 'rejected_stale', state: reduceOperation(state, event, onDiagnostic) };
+    }
+    const next = reduceOperation(state, event, onDiagnostic);
+    if (next !== state) return { kind: 'accepted', state: next };
+    if (event.type === 'FINALIZE' || (isTerminal(state) && active && acceptsIdentity(active, event.identity))) {
+        return { kind: 'accepted_noop', state };
+    }
+    return { kind: 'rejected_invalid', state };
 }
