@@ -112,13 +112,26 @@ export class OperationRegistry {
         if (terminalStatuses.has(state.status)) {
             record.channel.terminalSnapshot = state;
             this.snapshots.set(record.channel.key, state);
-            while (this.snapshots.size > 64) {
-                const oldest = this.snapshots.keys().next().value;
-                if (oldest === undefined) break;
-                this.snapshots.delete(oldest);
-            }
+            this.evictSnapshots();
         }
         for (const listener of [...record.channel.listeners]) safeCall(() => listener(state));
+        return true;
+    }
+
+    publishLogical(identity: RequestIdentity, state: OperationState<unknown>): boolean {
+        const channel = this.channelFor(identity);
+        if (!channel) return false;
+        const current = this.getByIdentity(identity);
+        if (current && !sameIdentity(current.identity, identity)) return false;
+        const channelState = channel.state;
+        if (!current && channelState && 'id' in channelState && !sameIdentity(channelState.id, identity)) return false;
+        channel.state = state;
+        if (terminalStatuses.has(state.status)) {
+            channel.terminalSnapshot = state;
+            this.snapshots.set(channel.key, state);
+            this.evictSnapshots();
+        }
+        for (const listener of [...channel.listeners]) safeCall(() => listener(state));
         return true;
     }
 
@@ -128,6 +141,7 @@ export class OperationRegistry {
         record.channel.state = state;
         record.channel.terminalSnapshot = state;
         this.snapshots.set(record.channel.key, state);
+        this.evictSnapshots();
         for (const listener of [...record.channel.listeners]) safeCall(() => listener(state));
         return true;
     }
@@ -226,10 +240,23 @@ export class OperationRegistry {
     private releaseResources(record: RegisteredOperation): void {
         record.cancellationHandlers.clear();
         const records = [...this.records.values()].some((items) => items.some((item) => item.channel === record.channel));
-        if (!records && !record.channel.terminalSnapshot &&
-            record.channel.state?.status !== 'awaiting_outcome') {
+        if (!records && record.channel.listeners.size === 0 &&
+            record.channel.state?.status !== 'awaiting_outcome' &&
+            !record.channel.terminalSnapshot) {
             record.channel.listeners.clear();
             this.channels.delete(record.channel.key);
+        }
+    }
+
+    private evictSnapshots(): void {
+        while (this.snapshots.size > 64) {
+            const oldest = this.snapshots.keys().next().value;
+            if (oldest === undefined) break;
+            this.snapshots.delete(oldest);
+            const channel = this.channels.get(oldest);
+            const active = channel && [...this.records.values()].some((items) =>
+                items.some((item) => item.channel === channel));
+            if (channel && !active && channel.listeners.size === 0) this.channels.delete(oldest);
         }
     }
 }

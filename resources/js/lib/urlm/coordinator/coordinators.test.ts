@@ -208,6 +208,13 @@ describe('URLM coordination', () => {
         expect(coordinator.finalize(identity)).toEqual({ kind: 'needs_outcome_classification' });
         expect(coordinator.getState().status).toBe('awaiting_outcome');
         expect(registry.getByIdentity(identity)).toBeUndefined();
+        expect(coordinator.start()).toEqual({ kind: 'already_owner', identity });
+        const observed: string[] = [];
+        registry.observe(identity, (state) => observed.push(state.status));
+        coordinator.dispatch({ type: 'TIMEOUT_UNKNOWN', identity });
+        coordinator.dispatch({ type: 'RECONCILE_FAILURE', identity, reasonCode: 'not-found' });
+        expect(observed).toEqual(['awaiting_outcome', 'reconciling', 'failed']);
+        expect(coordinator.finalize(identity)).toEqual({ kind: 'outcome_accepted' });
 
         const retryable = new OperationCoordinator('atomic', { ...profiles.read, retry: 'safe_transient' }, registry);
         const first = startedIdentity(retryable.start());
@@ -308,6 +315,7 @@ describe('URLM coordination', () => {
         }
         expect(registry.activeRecordCount()).toBe(0);
         expect(registry.terminalSnapshotCount()).toBeLessThanOrEqual(64);
+        expect(registry.channelCount()).toBeLessThanOrEqual(64);
     });
 
     it('does not clear a timer with mismatched correlation or idempotency', () => {

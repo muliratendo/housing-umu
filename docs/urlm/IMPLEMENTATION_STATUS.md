@@ -170,10 +170,13 @@ caused by URLM production changes.
   notified before release, and callback exceptions are isolated.
 - [x] Finalization returns `needs_outcome_classification` and uses
   `awaiting_outcome`; it does not invent an outcome.
-- [x] Terminal snapshots use a bounded retention policy.
+- [x] Terminal snapshots and inactive logical channels use a bounded retention
+  policy; evicting a snapshot also evicts its unsubscribed channel.
 - [x] Logical channels, transport attempts, and concurrency leases are
   represented separately; terminal retryable outcomes release their lease
   while retaining bounded logical observation.
+- [x] Post-finalization classification publishes through the logical channel
+  after the transport lease is released, while stale attempts remain rejected.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
 - [x] URLM tests, focused URLM typecheck, and production build pass; repository

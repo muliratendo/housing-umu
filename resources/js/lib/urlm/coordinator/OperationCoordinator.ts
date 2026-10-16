@@ -41,7 +41,7 @@ export class OperationCoordinator<T> {
     private identity?: RequestIdentity;
     private disposed = false;
     private retryAttempts = 0;
-    private finalizedAttempts = new Set<string>();
+    private finalizedAttemptKey?: string;
 
     constructor(
         private readonly key: string,
@@ -52,7 +52,7 @@ export class OperationCoordinator<T> {
 
     start(idempotencyKey?: string): StartResult<T> {
         if (this.disposed) return { kind: 'disposed' };
-        if (this.identity && !isTerminal(this.state) && this.registry.getByIdentity(this.identity)) {
+        if (this.identity && !isTerminal(this.state)) {
             return { kind: 'already_owner', identity: this.identity };
         }
         const identity = createIdentity(0, idempotencyKey);
@@ -60,6 +60,7 @@ export class OperationCoordinator<T> {
         if (result.kind === 'joined') return this.joined(result.record);
         this.identity = result.record.identity;
         this.retryAttempts = 0;
+        this.finalizedAttemptKey = undefined;
         this.bindRecord(result.record);
         if (result.kind === 'queued') {
             this.dispatch({ type: 'QUEUED', identity: this.identity, position: result.position });
@@ -92,6 +93,7 @@ export class OperationCoordinator<T> {
         this.timers.clear(previous);
         this.identity = replacement.record.identity;
         this.retryAttempts += 1;
+        this.finalizedAttemptKey = undefined;
         this.bindRecord(replacement.record);
         this.dispatch({ type: 'RETRY', identity: this.identity });
         return { kind: 'started', identity: this.identity };
@@ -109,7 +111,7 @@ export class OperationCoordinator<T> {
         if (result.kind === 'rejected_invalid' || result.kind === 'rejected_stale') return this.state;
         this.state = result.state;
         if (result.kind === 'accepted' && this.identity && sameIdentity(this.identity, event.identity)) {
-            this.registry.publish(this.identity, this.state as OperationState<unknown>);
+            this.registry.publishLogical(this.identity, this.state as OperationState<unknown>);
         }
         if (isTerminal(this.state) && this.identity && result.kind === 'accepted' && event.type !== 'CANCEL') {
             this.timers.clear(this.identity);
@@ -126,10 +128,11 @@ export class OperationCoordinator<T> {
 
     finalize(identity = this.identity): FinalizeResult {
         if (!identity || !this.identity || !sameIdentity(identity, this.identity)) return { kind: 'stale' };
-        if (this.finalizedAttempts.has(JSON.stringify(identity))) {
+        const attemptKey = JSON.stringify(identity);
+        if (this.finalizedAttemptKey === attemptKey) {
             return isTerminal(this.state) ? { kind: 'outcome_accepted' } : { kind: 'already_released' };
         }
-        this.finalizedAttempts.add(JSON.stringify(identity));
+        this.finalizedAttemptKey = attemptKey;
         this.timers.clear(identity);
         this.registry.clearCancellation(identity);
         if (isTerminal(this.state)) {

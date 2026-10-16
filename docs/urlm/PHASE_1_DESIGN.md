@@ -20,9 +20,10 @@ discriminated, and `reduceOperation` is pure and total. Explicit transition
 guards reject arbitrary starts, retries, and out-of-order events with a
 sanitized diagnostic. Blocked validation has an explicit `REVALIDATE` path;
 queued work has observable `QUEUED` and `PROMOTE` paths; reconciliation has
-explicit success, failure, unknown, and cancellation outcomes. Terminal states
-cannot be replaced by finalization or later events, and `FINALIZE` resolves an
-active lifecycle as `unknown_failure` when no outcome exists.
+explicit success, failure, unknown, and cancellation outcomes. Terminal states cannot be replaced by finalization or later events, and
+`FINALIZE` resolves an active lifecycle without inventing an outcome. Missing
+outcomes enter `awaiting_outcome` and remain classifiable through the logical
+observation channel after the transport lease is released.
 
 ## Authority, identity, and retry
 
@@ -88,7 +89,9 @@ reconciliation, or protocol failure. Finalization never creates success or
 failure and never cleans a newer attempt. Repeated finalization after an
 accepted terminal outcome returns `outcome_accepted`. Logical observer
 channels survive atomic retry replacement, isolate listener exceptions, and
-retain only bounded terminal snapshots.
+retain only bounded terminal snapshots. Evicting a snapshot also evicts its
+inactive, unsubscribed logical channel; active, awaiting-classification, and
+observed channels remain available until their lifecycle is complete.
 Diagnostics contain only event/status metadata and shortened identity
 references; raw events and states never cross the diagnostic boundary.
 Failure classification accepts only normalized discriminated inputs. Arbitrary
