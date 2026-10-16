@@ -43,10 +43,12 @@ failed replacement cannot release or promote the old authority.
 
 `OperationRegistry` is an explicit application authority exported as
 `applicationOperationRegistry`; tests and composition roots may inject an
-isolated registry. It implements latest-wins, single-flight, parallel, and FIFO queue semantics.
+isolated registry. Logical channels own state, observers, and retry identity.
+Transport attempt records own `AbortController` instances, cancellation
+handlers, and watchdog authority. Registry records are concurrency leases
+implementing latest-wins, single-flight, parallel, and FIFO queue semantics.
 One coordinator owns one unresolved lifecycle; parallel work requires separate
-coordinators. It owns `AbortController` instances, transport-neutral
-cancellation handlers, generations, exact-owner release, and queue promotion.
+coordinators. Terminal error UI does not keep a lease occupied indefinitely.
 Queued handles expose a subscription that receives activation through the
 reducer exactly once; cancellation/disposal before promotion cannot activate.
 This is in-memory coordination only; durable mutation protection belongs to a
@@ -77,14 +79,16 @@ terminal no-ops are observationally classified without overwriting snapshots.
 
 ## Finalization and observation lifetime
 
-`FINALIZE` is cleanup, not outcome classification. It clears exact timers and
-transport resources. If no outcome exists, the coordinator enters the
-transitional `awaiting_outcome` state and returns
-`needs_outcome_classification`; classification may then produce a known failure,
-known timeout, reconciliation, or protocol failure. Finalization never creates
-success or failure and never cleans a newer attempt. Logical observer channels
-survive atomic retry replacement, isolate listener exceptions, and retain only
-bounded terminal snapshots.
+`FINALIZE` is cleanup, not outcome classification. It verifies the exact
+attempt, clears its timer and cancellation resources, and detaches that
+transport lease. If no outcome exists, the coordinator enters the transitional
+`awaiting_outcome` state and returns `needs_outcome_classification`;
+classification may then produce a known failure, known timeout,
+reconciliation, or protocol failure. Finalization never creates success or
+failure and never cleans a newer attempt. Repeated finalization after an
+accepted terminal outcome returns `outcome_accepted`. Logical observer
+channels survive atomic retry replacement, isolate listener exceptions, and
+retain only bounded terminal snapshots.
 Diagnostics contain only event/status metadata and shortened identity
 references; raw events and states never cross the diagnostic boundary.
 Failure classification accepts only normalized discriminated inputs. Arbitrary

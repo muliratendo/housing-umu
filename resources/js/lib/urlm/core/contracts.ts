@@ -16,11 +16,11 @@ export type Concurrency = 'latest_wins' | 'single_flight' | 'parallel' | 'queue'
 export type RetryPolicy = 'never' | 'safe_transient' | 'idempotent_only' | 'user_only';
 
 export interface RequestIdentity {
-    operationId: string;
-    attemptId: string;
-    correlationId: string;
-    idempotencyKey?: string;
-    generation: number;
+    readonly operationId: string;
+    readonly attemptId: string;
+    readonly correlationId: string;
+    readonly idempotencyKey?: string;
+    readonly generation: number;
 }
 
 export interface RequestProfile {

@@ -1,22 +1,11 @@
 import { TERMINAL_STATUSES, type OperationState, type RequestIdentity } from './contracts';
+import { sameIdentity } from './identity';
 
 export const isTerminal = <T>(state: OperationState<T>): boolean =>
     (TERMINAL_STATUSES as readonly string[]).includes(state.status);
 
-export const sameIdentity = (a: RequestIdentity, b: RequestIdentity): boolean =>
-    a.operationId === b.operationId &&
-    a.attemptId === b.attemptId &&
-    a.correlationId === b.correlationId &&
-    a.generation === b.generation &&
-    a.idempotencyKey === b.idempotencyKey;
-
 export const acceptsIdentity = (active: RequestIdentity | undefined, event: RequestIdentity): boolean =>
-    active !== undefined &&
-    active.operationId === event.operationId &&
-    active.generation === event.generation &&
-    active.attemptId === event.attemptId &&
-    active.correlationId === event.correlationId &&
-    active.idempotencyKey === event.idempotencyKey;
+    active !== undefined && sameIdentity(active, event);
 
 export const isRetryEligible = <T>(state: OperationState<T>): boolean =>
     state.status === 'offline' ||

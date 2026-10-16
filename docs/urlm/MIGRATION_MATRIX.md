@@ -41,3 +41,9 @@ accepted-transition-only; rejected stale or foreign events cannot populate
 another operation's snapshot. Finalization stops transport and returns
 `needs_outcome_classification` when no outcome exists; it does not classify the
 outcome itself.
+
+The ownership split is explicit: logical channels retain state, observers, and
+retry budget; transport attempts retain abort/cancellation/watchdog resources;
+concurrency leases retain only current scheduling authority. Retryable terminal
+states release their transport/concurrency lease while retaining bounded
+logical observation needed for retry or classification.

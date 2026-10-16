@@ -17,14 +17,16 @@ const emit = <T>(
     onDiagnostic?: (value: Diagnostic) => void,
 ): void => {
     const id = 'identity' in event ? event.identity : undefined;
+    const safeRef = (value: string, prefix: string): string | undefined =>
+        new RegExp(`^${prefix}_[0-9a-z-]{8,128}$`, 'i').test(value) ? value.slice(0, 64) : undefined;
     try {
         onDiagnostic?.({
             code,
             eventType: event.type,
             sourceStatus: state.status,
             ...(id ? {
-                operationRef: id.operationId.slice(0, 12),
-                attemptRef: id.attemptId.slice(0, 12),
+                ...(safeRef(id.operationId, 'op') ? { operationRef: safeRef(id.operationId, 'op') } : {}),
+                ...(safeRef(id.attemptId, 'attempt') ? { attemptRef: safeRef(id.attemptId, 'attempt') } : {}),
                 generation: id.generation,
             } : {}),
         });

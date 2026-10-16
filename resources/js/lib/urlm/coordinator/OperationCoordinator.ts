@@ -1,7 +1,7 @@
 import type { OperationEvent } from '../core/events';
-import { createIdentity, retryIdentity } from '../core/identity';
+import { createIdentity, retryIdentity, sameIdentity } from '../core/identity';
 import type { OperationState, RequestProfile, RequestIdentity, RetryOrigin } from '../core/contracts';
-import { isRetryEligible, isTerminal, sameIdentity } from '../core/guards';
+import { isRetryEligible, isTerminal } from '../core/guards';
 import { reduceOperationResult } from '../core/reducer';
 import { applicationOperationRegistry, OperationRegistry, type RegisteredOperation } from './OperationRegistry';
 import { TimerRegistry } from './TimerRegistry';
@@ -24,14 +24,15 @@ export type StartResult<T> =
     | { kind: 'started'; identity: RequestIdentity }
     | JoinedOperation<T>
     | QueuedOperation<T>
-    | { kind: 'already_owner'; identity: RequestIdentity };
+    | { kind: 'already_owner'; identity: RequestIdentity }
+    | { kind: 'disposed' };
 
 export type RetryResult =
     | { kind: 'started'; identity: RequestIdentity }
     | { kind: 'policy' | 'ineligible' | 'disposed' | 'not_active' | 'budget_exhausted' };
 
 export type FinalizeResult =
-    | { kind: 'released'; outcome: 'accepted' }
+    | { kind: 'outcome_accepted' }
     | { kind: 'needs_outcome_classification' }
     | { kind: 'stale' | 'already_released' };
 
@@ -40,6 +41,7 @@ export class OperationCoordinator<T> {
     private identity?: RequestIdentity;
     private disposed = false;
     private retryAttempts = 0;
+    private finalizedAttempts = new Set<string>();
 
     constructor(
         private readonly key: string,
@@ -49,24 +51,24 @@ export class OperationCoordinator<T> {
     ) {}
 
     start(idempotencyKey?: string): StartResult<T> {
-        if (this.disposed) return { kind: 'already_owner', identity: this.identity ?? createIdentity() };
+        if (this.disposed) return { kind: 'disposed' };
         if (this.identity && !isTerminal(this.state) && this.registry.getByIdentity(this.identity)) {
             return { kind: 'already_owner', identity: this.identity };
         }
         const identity = createIdentity(0, idempotencyKey);
         const result = this.registry.start(this.key, this.profile.concurrency, identity);
         if (result.kind === 'joined') return this.joined(result.record);
-
         this.identity = result.record.identity;
         this.retryAttempts = 0;
         this.bindRecord(result.record);
         if (result.kind === 'queued') {
             this.dispatch({ type: 'QUEUED', identity: this.identity, position: result.position });
+            const queuedIdentity = this.identity;
             return {
                 kind: 'queued',
-                identity: this.identity,
+                identity: queuedIdentity,
                 position: result.position,
-                subscribe: (listener) => this.observe(this.identity!, listener),
+                subscribe: (listener) => this.observe(queuedIdentity, listener),
             };
         }
         this.dispatch({ type: 'START', identity: this.identity });
@@ -80,11 +82,12 @@ export class OperationCoordinator<T> {
             (this.profile.retry === 'user_only' && origin === 'automatic') ||
             (this.profile.retry === 'idempotent_only' && !this.identity.idempotencyKey) ||
             (this.profile.retry === 'safe_transient' && origin === 'automatic' && !this.isTransientState())) return { kind: 'policy' };
-        const budget = this.profile.retryBudget ?? 3;
-        if (this.retryAttempts >= budget) return { kind: 'budget_exhausted' };
+        if (this.retryAttempts >= (this.profile.retryBudget ?? 3)) return { kind: 'budget_exhausted' };
         const previous = this.identity;
-        const nextAttempt = retryIdentity(previous, previous.generation + 1);
-        const replacement = this.registry.replace(this.key, previous, nextAttempt);
+        const next = retryIdentity(previous, previous.generation + 1);
+        const replacement = this.registry.getByIdentity(previous)
+            ? this.registry.replace(this.key, previous, next)
+            : this.registry.reacquire(this.key, this.profile.concurrency, next);
         if (replacement.kind === 'rejected') return { kind: 'policy' };
         this.timers.clear(previous);
         this.identity = replacement.record.identity;
@@ -96,6 +99,12 @@ export class OperationCoordinator<T> {
 
     dispatch(event: OperationEvent<T>): OperationState<T> {
         if (this.disposed) return this.state;
+        if (event.type === 'CANCEL' && this.identity && sameIdentity(this.identity, event.identity)) {
+            this.registry.cancel(this.key, event.identity, event.cause);
+            return this.state;
+        }
+        if (this.identity && sameIdentity(this.identity, event.identity) &&
+            this.registry.isCancelling(event.identity)) return this.state;
         const result = reduceOperationResult(this.state, event);
         if (result.kind === 'rejected_invalid' || result.kind === 'rejected_stale') return this.state;
         this.state = result.state;
@@ -106,6 +115,7 @@ export class OperationCoordinator<T> {
             this.timers.clear(this.identity);
             this.registry.clearCancellation(this.identity);
             if (!isRetryEligible(this.state)) this.registry.release(this.identity);
+            else this.registry.release(this.identity);
         }
         return this.state;
     }
@@ -116,14 +126,19 @@ export class OperationCoordinator<T> {
 
     finalize(identity = this.identity): FinalizeResult {
         if (!identity || !this.identity || !sameIdentity(identity, this.identity)) return { kind: 'stale' };
-        if (!this.registry.getByIdentity(identity)) return { kind: 'already_released' };
-        this.timers.clear(identity);
-        if (!isTerminal(this.state)) {
-            this.dispatch({ type: 'OUTCOME_REQUIRED', identity });
-            return { kind: 'needs_outcome_classification' };
+        if (this.finalizedAttempts.has(JSON.stringify(identity))) {
+            return isTerminal(this.state) ? { kind: 'outcome_accepted' } : { kind: 'already_released' };
         }
+        this.finalizedAttempts.add(JSON.stringify(identity));
+        this.timers.clear(identity);
+        this.registry.clearCancellation(identity);
+        if (isTerminal(this.state)) {
+            this.registry.release(identity);
+            return { kind: 'outcome_accepted' };
+        }
+        this.dispatch({ type: 'OUTCOME_REQUIRED', identity });
         this.registry.release(identity);
-        return { kind: 'released', outcome: 'accepted' };
+        return { kind: 'needs_outcome_classification' };
     }
 
     setWatchdog(callback: () => void): void {
@@ -144,9 +159,9 @@ export class OperationCoordinator<T> {
 
     dispose(): void {
         if (this.disposed) return;
-        if (this.identity && !isTerminal(this.state)) this.registry.dispose(this.identity);
-        this.disposed = true;
+        if (this.identity && this.registry.getByIdentity(this.identity)) this.registry.dispose(this.identity);
         if (this.identity) this.timers.clear(this.identity);
+        this.disposed = true;
     }
 
     getState(): OperationState<T> { return this.state; }
@@ -154,13 +169,18 @@ export class OperationCoordinator<T> {
 
     private bindRecord(record: RegisteredOperation): void {
         record.onCancel = (cause) => {
-            if (this.identity && sameIdentity(this.identity, record.identity)) {
-                this.dispatch({ type: 'CANCEL', identity: record.identity, cause });
+            if (!this.identity || !sameIdentity(this.identity, record.identity)) return;
+            const result = reduceOperationResult(this.state, { type: 'CANCEL', identity: record.identity, cause });
+            if (result.kind === 'accepted') {
+                this.state = result.state;
+                this.timers.clear(record.identity);
+                this.registry.publishCancellation(record.identity, this.state as OperationState<unknown>);
             }
         };
         record.onPromote = () => {
-            if (this.disposed || !this.identity || !sameIdentity(this.identity, record.identity)) return;
-            this.dispatch({ type: 'PROMOTE', identity: record.identity });
+            if (!this.disposed && this.identity && sameIdentity(this.identity, record.identity)) {
+                this.dispatch({ type: 'PROMOTE', identity: record.identity });
+            }
         };
     }
 

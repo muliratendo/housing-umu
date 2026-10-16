@@ -1,27 +1,28 @@
 import type { CancelCause, Concurrency, OperationState, RequestIdentity } from '../core/contracts';
-import { sameIdentity } from '../core/guards';
+import { identityKey, logicalIdentityKey, sameIdentity } from '../core/identity';
 
 type Listener = (state: OperationState<unknown>) => void;
+type SafeCallback = () => void;
+
+interface LogicalChannel {
+    readonly key: string;
+    readonly listeners: Set<Listener>;
+    state?: OperationState<unknown>;
+    terminalSnapshot?: OperationState<unknown>;
+}
 
 export interface RegisteredOperation {
     readonly key: string;
     readonly policy: Concurrency;
     readonly identity: RequestIdentity;
     readonly controller: AbortController;
-    readonly cancellationHandlers: Set<() => void>;
+    readonly cancellationHandlers: Set<SafeCallback>;
     channel: LogicalChannel;
     queued: boolean;
-    cancelled: boolean;
-    superseded: boolean;
-    onSuperseded?: () => void;
-    onPromote?: () => void;
+    cancelling: boolean;
+    onSuperseded?: SafeCallback;
+    onPromote?: SafeCallback;
     onCancel?: (cause: CancelCause) => void;
-}
-
-interface LogicalChannel {
-    readonly listeners: Set<Listener>;
-    state?: OperationState<unknown>;
-    terminal: boolean;
 }
 
 export type RegistryStartResult =
@@ -32,23 +33,26 @@ export type RegistryStartResult =
 export type RegistryReleaseResult = { released: boolean; promoted?: RegisteredOperation };
 export type RegistryReplaceResult = { kind: 'replaced'; record: RegisteredOperation } | { kind: 'rejected' };
 
-const safeCall = (callback: () => void): void => {
-    try { callback(); } catch { /* callback failures cannot interrupt lifecycle cleanup */ }
-};
+const terminalStatuses = new Set([
+    'succeeded', 'empty', 'validation_failed', 'auth_required', 'forbidden',
+    'conflicted', 'throttled', 'offline', 'timed_out', 'cancelled', 'failed',
+    'unknown_failure',
+]);
 
-const logicalKey = (identity: RequestIdentity): string =>
-    `${identity.operationId}:${identity.correlationId}:${identity.idempotencyKey ?? ''}`;
+const safeCall = (callback: SafeCallback): void => {
+    try { callback(); } catch { /* lifecycle cleanup is not callback-owned */ }
+};
 
 export class OperationRegistry {
     private readonly records = new Map<string, RegisteredOperation[]>();
     private readonly channels = new Map<string, LogicalChannel>();
-    private readonly terminalSnapshots = new Map<string, OperationState<unknown>>();
+    private readonly snapshots = new Map<string, OperationState<unknown>>();
     private generation = 0;
 
     start(key: string, policy: Concurrency, identity: RequestIdentity): RegistryStartResult {
         const records = this.records.get(key) ?? [];
         if (policy === 'single_flight') {
-            const active = records.find((record) => !record.cancelled);
+            const active = records.find((record) => !record.cancelling);
             if (active) return { kind: 'joined', record: active };
         }
         if (policy === 'latest_wins') {
@@ -74,10 +78,19 @@ export class OperationRegistry {
         return { kind: 'replaced', record: replacement };
     }
 
+    reacquire(key: string, policy: Concurrency, identity: RequestIdentity): RegistryReplaceResult {
+        const records = this.records.get(key) ?? [];
+        if (records.some((record) => !sameIdentity(record.identity, identity))) return { kind: 'rejected' };
+        const record = this.createRecord(key, policy, identity, false);
+        records.push(record);
+        this.records.set(key, records);
+        return { kind: 'replaced', record };
+    }
+
     getByIdentity(identity: RequestIdentity): RegisteredOperation | undefined {
         for (const records of this.records.values()) {
-            const found = records.find((record) => sameIdentity(record.identity, identity));
-            if (found) return found;
+            const record = records.find((candidate) => sameIdentity(candidate.identity, identity));
+            if (record) return record;
         }
         return undefined;
     }
@@ -85,33 +98,52 @@ export class OperationRegistry {
     isCurrent(key: string, identity: RequestIdentity): boolean {
         const records = this.records.get(key);
         const record = records?.find((candidate) => sameIdentity(candidate.identity, identity));
-        return !!record && !record.cancelled && (!record.queued || records?.[0] === record);
+        return !!record && !record.cancelling && (!record.queued || records?.[0] === record);
+    }
+
+    isCancelling(identity: RequestIdentity): boolean {
+        return this.getByIdentity(identity)?.cancelling ?? false;
     }
 
     publish(identity: RequestIdentity, state: OperationState<unknown>): boolean {
         const record = this.getByIdentity(identity);
-        if (!record || !sameIdentity(record.identity, identity) || record.cancelled) return false;
+        if (!record || !sameIdentity(record.identity, identity) || record.cancelling) return false;
         record.channel.state = state;
-        if (['succeeded', 'empty', 'validation_failed', 'auth_required', 'forbidden', 'conflicted', 'throttled', 'offline', 'timed_out', 'cancelled', 'failed', 'unknown_failure'].includes(state.status)) {
-            record.channel.terminal = true;
-            this.terminalSnapshots.set(logicalKey(identity), state);
-            while (this.terminalSnapshots.size > 64) this.terminalSnapshots.delete(this.terminalSnapshots.keys().next().value as string);
+        if (terminalStatuses.has(state.status)) {
+            record.channel.terminalSnapshot = state;
+            this.snapshots.set(record.channel.key, state);
+            while (this.snapshots.size > 64) {
+                const oldest = this.snapshots.keys().next().value;
+                if (oldest === undefined) break;
+                this.snapshots.delete(oldest);
+            }
         }
         for (const listener of [...record.channel.listeners]) safeCall(() => listener(state));
         return true;
     }
 
-    observe(identity: RequestIdentity, listener: Listener): () => void {
+    publishCancellation(identity: RequestIdentity, state: OperationState<unknown>): boolean {
         const record = this.getByIdentity(identity);
-        const channel = record?.channel ?? this.channels.get(logicalKey(identity));
+        if (!record || !record.cancelling || state.status !== 'cancelled') return false;
+        record.channel.state = state;
+        record.channel.terminalSnapshot = state;
+        this.snapshots.set(record.channel.key, state);
+        for (const listener of [...record.channel.listeners]) safeCall(() => listener(state));
+        return true;
+    }
+
+    observe(identity: RequestIdentity, listener: Listener): () => void {
+        const channel = this.channelFor(identity);
         if (!channel) return () => undefined;
         channel.listeners.add(listener);
-        if (channel.state) safeCall(() => listener(channel.state as OperationState<unknown>));
+        const snapshot = channel.state ?? channel.terminalSnapshot ?? this.snapshots.get(channel.key);
+        if (snapshot) safeCall(() => listener(snapshot));
         return () => channel.listeners.delete(listener);
     }
 
     getState(identity: RequestIdentity): OperationState<unknown> | undefined {
-        return this.getByIdentity(identity)?.channel.state ?? this.terminalSnapshots.get(logicalKey(identity));
+        const channel = this.channelFor(identity);
+        return channel?.state ?? channel?.terminalSnapshot ?? this.snapshots.get(logicalIdentityKey(identity));
     }
 
     release(identity: RequestIdentity): RegistryReleaseResult {
@@ -119,6 +151,7 @@ export class OperationRegistry {
             const index = records.findIndex((record) => sameIdentity(record.identity, identity));
             if (index < 0) continue;
             const [record] = records.splice(index, 1);
+            this.abortResources(record);
             this.releaseResources(record);
             const promoted = record.policy === 'queue' && index === 0 ? records[0] : undefined;
             if (promoted) {
@@ -136,7 +169,7 @@ export class OperationRegistry {
         return record ? this.cancelRecord(record, cause) : false;
     }
 
-    registerCancellation(identity: RequestIdentity, handler: () => void): () => void {
+    registerCancellation(identity: RequestIdentity, handler: SafeCallback): () => void {
         const record = this.getByIdentity(identity);
         if (!record) return () => undefined;
         record.cancellationHandlers.add(handler);
@@ -152,26 +185,34 @@ export class OperationRegistry {
         return record ? this.cancelRecord(record, 'disposed') : false;
     }
 
-    activeRecordCount(): number { return [...this.records.values()].reduce((total, records) => total + records.length, 0); }
-    terminalSnapshotCount(): number { return this.terminalSnapshots.size; }
+    activeRecordCount(): number { return [...this.records.values()].reduce((count, records) => count + records.length, 0); }
+    channelCount(): number { return this.channels.size; }
+    terminalSnapshotCount(): number { return this.snapshots.size; }
 
     private createRecord(key: string, policy: Concurrency, identity: RequestIdentity, queued: boolean): RegisteredOperation {
-        const channel = this.channels.get(logicalKey(identity)) ?? { listeners: new Set(), terminal: false };
-        this.channels.set(logicalKey(identity), channel);
+        const normalized: RequestIdentity = Object.freeze({
+            ...identity,
+            generation: Math.max(++this.generation, identity.generation),
+        });
+        const channelKey = logicalIdentityKey(normalized);
+        const channel = this.channels.get(channelKey) ?? { key: channelKey, listeners: new Set<Listener>() };
+        this.channels.set(channelKey, channel);
         return {
-            key, policy, identity: { ...identity, generation: Math.max(++this.generation, identity.generation) },
-            controller: new AbortController(), cancellationHandlers: new Set(), channel,
-            queued, cancelled: false, superseded: false,
+            key, policy, identity: normalized, controller: new AbortController(),
+            cancellationHandlers: new Set(), channel, queued, cancelling: false,
         };
     }
 
+    private channelFor(identity: RequestIdentity): LogicalChannel | undefined {
+        return this.channels.get(logicalIdentityKey(identity));
+    }
+
     private cancelRecord(record: RegisteredOperation, cause: CancelCause): boolean {
-        if (record.cancelled) return false;
-        record.superseded = cause === 'superseded';
+        if (record.cancelling) return false;
+        record.cancelling = true;
         this.abortResources(record);
         safeCall(() => record.onCancel?.(cause));
-        record.cancelled = true;
-        if (record.superseded) safeCall(() => record.onSuperseded?.());
+        if (cause === 'superseded') safeCall(() => record.onSuperseded?.());
         this.release(record.identity);
         return true;
     }
@@ -184,9 +225,11 @@ export class OperationRegistry {
 
     private releaseResources(record: RegisteredOperation): void {
         record.cancellationHandlers.clear();
-        if (record.channel.terminal) {
+        const records = [...this.records.values()].some((items) => items.some((item) => item.channel === record.channel));
+        if (!records && !record.channel.terminalSnapshot &&
+            record.channel.state?.status !== 'awaiting_outcome') {
             record.channel.listeners.clear();
-            this.channels.delete(logicalKey(record.identity));
+            this.channels.delete(record.channel.key);
         }
     }
 }

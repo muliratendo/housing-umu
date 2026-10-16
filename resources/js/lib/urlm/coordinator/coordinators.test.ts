@@ -207,7 +207,7 @@ describe('URLM coordination', () => {
         const identity = startedIdentity(coordinator.start());
         expect(coordinator.finalize(identity)).toEqual({ kind: 'needs_outcome_classification' });
         expect(coordinator.getState().status).toBe('awaiting_outcome');
-        expect(registry.getByIdentity(identity)).toBeDefined();
+        expect(registry.getByIdentity(identity)).toBeUndefined();
 
         const retryable = new OperationCoordinator('atomic', { ...profiles.read, retry: 'safe_transient' }, registry);
         const first = startedIdentity(retryable.start());
@@ -277,6 +277,60 @@ describe('URLM coordination', () => {
         coordinator.registerCancellation(() => { throw new Error('handler secret'); });
         expect(() => coordinator.cancel('transport')).not.toThrow();
         expect(received).toEqual(['validating', 'cancelled']);
+        expect(registry.activeRecordCount()).toBe(0);
+    });
+
+    it('returns disposed without creating identity or registry state', () => {
+        const registry = new OperationRegistry();
+        const coordinator = new OperationCoordinator('disposed', profiles.read, registry);
+        coordinator.dispose();
+        expect(coordinator.start()).toEqual({ kind: 'disposed' });
+        expect(coordinator.getIdentity()).toBeUndefined();
+        expect(registry.activeRecordCount()).toBe(0);
+        expect(registry.channelCount()).toBe(0);
+    });
+
+    it('delivers terminal snapshots to late observers and bounds retention', () => {
+        const registry = new OperationRegistry();
+        const coordinator = new OperationCoordinator('late', profiles.read, registry);
+        const identity = startedIdentity(coordinator.start());
+        coordinator.dispatch({ type: 'CLIENT_VALID', identity });
+        coordinator.dispatch({ type: 'SUCCESS', identity });
+        const states: string[] = [];
+        const unsubscribe = registry.observe(identity, (state) => states.push(state.status));
+        unsubscribe();
+        expect(states).toEqual(['succeeded']);
+        for (let index = 0; index < 80; index += 1) {
+            const item = new OperationCoordinator(`cycle-${index}`, profiles.read, registry);
+            const itemIdentity = startedIdentity(item.start());
+            item.dispatch({ type: 'CLIENT_VALID', identity: itemIdentity });
+            item.dispatch({ type: 'SUCCESS', identity: itemIdentity });
+        }
+        expect(registry.activeRecordCount()).toBe(0);
+        expect(registry.terminalSnapshotCount()).toBeLessThanOrEqual(64);
+    });
+
+    it('does not clear a timer with mismatched correlation or idempotency', () => {
+        vi.useFakeTimers();
+        const timers = new TimerRegistry();
+        const identity = { operationId: 'op_a', attemptId: 'attempt_a', correlationId: 'corr_a', idempotencyKey: 'key-a', generation: 1 };
+        const callback = vi.fn();
+        timers.set(identity, callback, 100, () => true);
+        timers.clear({ ...identity, correlationId: 'corr_b' });
+        vi.advanceTimersByTime(100);
+        expect(callback).toHaveBeenCalledTimes(1);
+        expect(timers.has(identity)).toBe(false);
+    });
+
+    it('blocks synchronous abort outcomes during cancellation', () => {
+        const registry = new OperationRegistry();
+        const coordinator = new OperationCoordinator('abort-race', profiles.read, registry);
+        const identity = startedIdentity(coordinator.start());
+        coordinator.registerCancellation(() => {
+            coordinator.dispatch({ type: 'SUCCESS', identity, data: 'must-not-win' });
+        });
+        coordinator.cancel('transport');
+        expect(coordinator.getState().status).toBe('cancelled');
         expect(registry.activeRecordCount()).toBe(0);
     });
 });
