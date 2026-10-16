@@ -14,6 +14,7 @@ export type OperationScope = 'field' | 'control' | 'section' | 'page' | 'applica
 export type Criticality = 'advisory' | 'important' | 'blocking';
 export type Concurrency = 'latest_wins' | 'single_flight' | 'parallel' | 'queue';
 export type RetryPolicy = 'never' | 'safe_transient' | 'idempotent_only' | 'user_only';
+export type UnresolvedOutcomePolicy = 'join' | 'block';
 
 export interface RequestIdentity {
     readonly operationId: string;
@@ -33,6 +34,7 @@ export interface RequestProfile {
     timeoutMs: number;
     staleData: 'forbid' | 'allow_marked' | 'allow_silent_refresh';
     retryBudget?: number;
+    unresolvedOutcome?: UnresolvedOutcomePolicy;
 }
 
 export type FieldErrors = Record<string, string[]>;
@@ -67,7 +69,8 @@ export type OperationState<T> =
     | { status: 'timed_out'; id: RequestIdentity; outcomeKnown: boolean }
     | { status: 'cancelled'; id: RequestIdentity; cause: CancelCause }
     | { status: 'failed'; id: RequestIdentity; reasonCode: string; retryable: boolean }
-    | { status: 'unknown_failure'; id: RequestIdentity; correlationId: string };
+    | { status: 'unknown_failure'; id: RequestIdentity; correlationId: string }
+    | { status: 'abandoned'; id: RequestIdentity };
 
 export const TERMINAL_STATUSES = [
     'succeeded',
@@ -82,6 +85,7 @@ export const TERMINAL_STATUSES = [
     'cancelled',
     'failed',
     'unknown_failure',
+    'abandoned',
 ] as const;
 
 export type RetryEligibleState<T> =

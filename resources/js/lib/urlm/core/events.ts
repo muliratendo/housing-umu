@@ -29,6 +29,7 @@ export type OperationEvent<T> =
     | { type: 'CANCEL'; identity: RequestIdentity; cause: CancelCause }
     | { type: 'FAILURE'; identity: RequestIdentity; reasonCode: string; retryable: boolean }
     | { type: 'UNKNOWN_FAILURE'; identity: RequestIdentity }
+    | { type: 'ABANDON'; identity: RequestIdentity }
     | { type: 'RETRY'; identity: RequestIdentity; startedAt?: number }
     | { type: 'FINALIZE'; identity: RequestIdentity }
     | { type: 'OUTCOME_REQUIRED'; identity: RequestIdentity };

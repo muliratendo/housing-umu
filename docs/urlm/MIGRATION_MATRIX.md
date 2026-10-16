@@ -47,3 +47,8 @@ retry budget; transport attempts retain abort/cancellation/watchdog resources;
 concurrency leases retain only current scheduling authority. Retryable terminal
 states release their transport/concurrency lease while retaining bounded
 logical observation needed for retry or classification.
+
+Unknown outcomes additionally retain a logical conflict claim after transport
+release. Single-flight callers join it, queue callers remain FIFO behind it,
+and latest-wins callers receive a safe typed block by default. Recordless
+disposal closes the logical lifecycle with `abandoned`.

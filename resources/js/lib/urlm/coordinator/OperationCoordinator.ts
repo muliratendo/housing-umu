@@ -1,5 +1,5 @@
 import type { OperationEvent } from '../core/events';
-import { createIdentity, retryIdentity, sameIdentity } from '../core/identity';
+import { createIdentity, identityKey, retryIdentity, sameIdentity } from '../core/identity';
 import type { OperationState, RequestProfile, RequestIdentity, RetryOrigin } from '../core/contracts';
 import { isRetryEligible, isTerminal } from '../core/guards';
 import { reduceOperationResult } from '../core/reducer';
@@ -24,6 +24,7 @@ export type StartResult<T> =
     | { kind: 'started'; identity: RequestIdentity }
     | JoinedOperation<T>
     | QueuedOperation<T>
+    | { kind: 'blocked'; identity: RequestIdentity }
     | { kind: 'already_owner'; identity: RequestIdentity }
     | { kind: 'disposed' };
 
@@ -56,8 +57,15 @@ export class OperationCoordinator<T> {
             return { kind: 'already_owner', identity: this.identity };
         }
         const identity = createIdentity(0, idempotencyKey);
-        const result = this.registry.start(this.key, this.profile.concurrency, identity);
+        const result = this.registry.start(
+            this.key,
+            this.profile.concurrency,
+            identity,
+            this.profile.unresolvedOutcome ?? 'block',
+        );
         if (result.kind === 'joined') return this.joined(result.record);
+        if (result.kind === 'joined_logical') return this.joined(result.identity);
+        if (result.kind === 'blocked') return result;
         this.identity = result.record.identity;
         this.retryAttempts = 0;
         this.finalizedAttemptKey = undefined;
@@ -116,8 +124,7 @@ export class OperationCoordinator<T> {
         if (isTerminal(this.state) && this.identity && result.kind === 'accepted' && event.type !== 'CANCEL') {
             this.timers.clear(this.identity);
             this.registry.clearCancellation(this.identity);
-            if (!isRetryEligible(this.state)) this.registry.release(this.identity);
-            else this.registry.release(this.identity);
+            this.registry.release(this.identity);
         }
         return this.state;
     }
@@ -128,7 +135,7 @@ export class OperationCoordinator<T> {
 
     finalize(identity = this.identity): FinalizeResult {
         if (!identity || !this.identity || !sameIdentity(identity, this.identity)) return { kind: 'stale' };
-        const attemptKey = JSON.stringify(identity);
+        const attemptKey = identityKey(identity);
         if (this.finalizedAttemptKey === attemptKey) {
             return isTerminal(this.state) ? { kind: 'outcome_accepted' } : { kind: 'already_released' };
         }
@@ -163,6 +170,10 @@ export class OperationCoordinator<T> {
     dispose(): void {
         if (this.disposed) return;
         if (this.identity && this.registry.getByIdentity(this.identity)) this.registry.dispose(this.identity);
+        else if (this.identity && ['awaiting_outcome', 'reconciling'].includes(this.state.status)) {
+            this.dispatch({ type: 'ABANDON', identity: this.identity });
+            this.registry.closeLogical(this.identity);
+        }
         if (this.identity) this.timers.clear(this.identity);
         this.disposed = true;
     }
@@ -187,12 +198,13 @@ export class OperationCoordinator<T> {
         };
     }
 
-    private joined(record: RegisteredOperation): JoinedOperation<T> {
+    private joined(recordOrIdentity: RegisteredOperation | RequestIdentity): JoinedOperation<T> {
+        const identity = 'identity' in recordOrIdentity ? recordOrIdentity.identity : recordOrIdentity;
         return {
             kind: 'joined',
-            identity: record.identity,
-            getState: () => this.registry.getState(record.identity) as OperationState<T> | undefined,
-            subscribe: (listener) => this.observe(record.identity, listener),
+            identity,
+            getState: () => this.registry.getState(identity) as OperationState<T> | undefined,
+            subscribe: (listener) => this.observe(identity, listener),
         };
     }
 

@@ -110,6 +110,13 @@ test and the environmental baselines are reviewed:
 - finalization releases exact resources and returns
   `needs_outcome_classification` without inventing success or failure;
 - terminal snapshots are bounded and logical observer channels do not leak;
+- unresolved logical claims survive transport release: single-flight joins,
+  queue ordering, and safe latest-wins blocking remain authoritative until
+  classification or logical closure;
+- recordless awaiting/reconciling disposal publishes deterministic `abandoned`
+  closure, releases the claim, and notifies joined observers exactly once;
+- channel release, snapshot eviction, unsubscribe, and logical closure share
+  one reaping predicate;
 - arbitrary callback failures cannot interrupt cleanup or promotion;
 - reconciliation can resolve to success, failure, unknown failure, or valid
   cancellation;

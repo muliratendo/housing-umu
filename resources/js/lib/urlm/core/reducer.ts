@@ -172,6 +172,10 @@ export function reduceOperation<T>(
             return { status: 'failed', id: event.identity, reasonCode: event.reasonCode, retryable: event.retryable };
         case 'UNKNOWN_FAILURE':
             return { status: 'unknown_failure', id: event.identity, correlationId: event.identity.correlationId };
+        case 'ABANDON':
+            return ['awaiting_outcome', 'reconciling'].includes(state.status)
+                ? { status: 'abandoned', id: event.identity }
+                : (emit('INVALID_TRANSITION', event, state, onDiagnostic), unchanged(state));
         default:
             emit('INVALID_TRANSITION', event, state, onDiagnostic);
             return unchanged(state);

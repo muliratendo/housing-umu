@@ -227,6 +227,58 @@ describe('URLM coordination', () => {
         }
     });
 
+    it('retains cross-coordinator single-flight authority during classification', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'single_flight' as const };
+        const owner = new OperationCoordinator('unknown', profile, registry);
+        const follower = new OperationCoordinator('unknown', profile, registry);
+        const first = startedIdentity(owner.start());
+        expect(owner.finalize(first)).toEqual({ kind: 'needs_outcome_classification' });
+        const joined = follower.start();
+        expect(joined?.kind).toBe('joined');
+        if (!joined || joined.kind !== 'joined') return;
+        const states: string[] = [];
+        joined.subscribe((state) => states.push(state.status));
+        owner.dispatch({ type: 'TIMEOUT_UNKNOWN', identity: first });
+        owner.dispatch({ type: 'RECONCILE_SUCCESS', identity: first });
+        expect(states).toEqual(['awaiting_outcome', 'reconciling', 'succeeded']);
+        expect(startedIdentity(new OperationCoordinator('unknown', profile, registry).start())).toBeDefined();
+    });
+
+    it('blocks latest-wins and queues FIFO work behind an unresolved claim', () => {
+        const registry = new OperationRegistry();
+        const ownerProfile = { ...profiles.read, concurrency: 'single_flight' as const };
+        const owner = new OperationCoordinator('claim-policy', ownerProfile, registry);
+        const identity = startedIdentity(owner.start());
+        owner.finalize(identity);
+
+        const latest = new OperationCoordinator('claim-policy', { ...profiles.read, concurrency: 'latest_wins' }, registry);
+        expect(latest.start().kind).toBe('blocked');
+        const queued = new OperationCoordinator('claim-policy', { ...profiles.read, concurrency: 'queue' }, registry);
+        expect(queued.start().kind).toBe('queued');
+        owner.dispatch({ type: 'UNKNOWN_FAILURE', identity });
+        expect(queued.getState().status).toBe('validating');
+    });
+
+    it('closes recordless unresolved lifecycles on disposal', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'single_flight' as const };
+        const owner = new OperationCoordinator('dispose-unknown', profile, registry);
+        const follower = new OperationCoordinator('dispose-unknown', profile, registry);
+        const identity = startedIdentity(owner.start());
+        expect(owner.finalize(identity)).toEqual({ kind: 'needs_outcome_classification' });
+        const joined = follower.start();
+        expect(joined?.kind).toBe('joined');
+        if (!joined || joined.kind !== 'joined') return;
+        const states: string[] = [];
+        joined.subscribe((state) => states.push(state.status));
+        owner.dispose();
+        owner.dispose();
+        expect(states).toEqual(['awaiting_outcome', 'abandoned']);
+        expect(startedIdentity(new OperationCoordinator('dispose-unknown', profile, registry).start())).toBeDefined();
+        expect(registry.activeRecordCount()).toBe(1);
+    });
+
     it('does not publish a foreign event through another coordinator', () => {
         const registry = new OperationRegistry();
         const one = new OperationCoordinator('one', { ...profiles.read, concurrency: 'parallel' }, registry);
@@ -316,6 +368,27 @@ describe('URLM coordination', () => {
         expect(registry.activeRecordCount()).toBe(0);
         expect(registry.terminalSnapshotCount()).toBeLessThanOrEqual(64);
         expect(registry.channelCount()).toBeLessThanOrEqual(64);
+    });
+
+    it('reaps an evicted subscribed channel when its final listener leaves', () => {
+        const registry = new OperationRegistry();
+        const first = new OperationCoordinator('evicted-first', profiles.read, registry);
+        const firstIdentity = startedIdentity(first.start());
+        const unsubscribe = registry.observe(firstIdentity, () => undefined);
+        first.dispatch({ type: 'CLIENT_VALID', identity: firstIdentity });
+        first.dispatch({ type: 'SUCCESS', identity: firstIdentity });
+        for (let index = 0; index < 200; index += 1) {
+            const item = new OperationCoordinator(`evicted-${index}`, profiles.read, registry);
+            const identity = startedIdentity(item.start());
+            item.dispatch({ type: 'CLIENT_VALID', identity });
+            item.dispatch({ type: 'SUCCESS', identity });
+        }
+        expect(registry.getState(firstIdentity)?.status).toBe('succeeded');
+        const before = registry.channelCount();
+        unsubscribe();
+        expect(registry.channelCount()).toBeLessThan(before);
+        expect(registry.terminalSnapshotCount()).toBeLessThanOrEqual(64);
+        expect(registry.activeRecordCount()).toBe(0);
     });
 
     it('does not clear a timer with mismatched correlation or idempotency', () => {

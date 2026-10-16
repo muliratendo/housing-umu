@@ -1,4 +1,4 @@
-import type { CancelCause, Concurrency, OperationState, RequestIdentity } from '../core/contracts';
+import type { CancelCause, Concurrency, OperationState, RequestIdentity, UnresolvedOutcomePolicy } from '../core/contracts';
 import { identityKey, logicalIdentityKey, sameIdentity } from '../core/identity';
 
 type Listener = (state: OperationState<unknown>) => void;
@@ -9,6 +9,13 @@ interface LogicalChannel {
     readonly listeners: Set<Listener>;
     state?: OperationState<unknown>;
     terminalSnapshot?: OperationState<unknown>;
+}
+
+interface LogicalClaim {
+    readonly key: string;
+    readonly policy: Concurrency;
+    readonly identity: RequestIdentity;
+    readonly channel: LogicalChannel;
 }
 
 export interface RegisteredOperation {
@@ -28,7 +35,9 @@ export interface RegisteredOperation {
 export type RegistryStartResult =
     | { kind: 'started'; record: RegisteredOperation }
     | { kind: 'joined'; record: RegisteredOperation }
-    | { kind: 'queued'; record: RegisteredOperation; position: number };
+    | { kind: 'joined_logical'; identity: RequestIdentity; channel: LogicalChannel }
+    | { kind: 'queued'; record: RegisteredOperation; position: number }
+    | { kind: 'blocked'; identity: RequestIdentity };
 
 export type RegistryReleaseResult = { released: boolean; promoted?: RegisteredOperation };
 export type RegistryReplaceResult = { kind: 'replaced'; record: RegisteredOperation } | { kind: 'rejected' };
@@ -36,7 +45,7 @@ export type RegistryReplaceResult = { kind: 'replaced'; record: RegisteredOperat
 const terminalStatuses = new Set([
     'succeeded', 'empty', 'validation_failed', 'auth_required', 'forbidden',
     'conflicted', 'throttled', 'offline', 'timed_out', 'cancelled', 'failed',
-    'unknown_failure',
+    'unknown_failure', 'abandoned',
 ]);
 
 const safeCall = (callback: SafeCallback): void => {
@@ -47,10 +56,30 @@ export class OperationRegistry {
     private readonly records = new Map<string, RegisteredOperation[]>();
     private readonly channels = new Map<string, LogicalChannel>();
     private readonly snapshots = new Map<string, OperationState<unknown>>();
+    private readonly claims = new Map<string, LogicalClaim>();
     private generation = 0;
 
-    start(key: string, policy: Concurrency, identity: RequestIdentity): RegistryStartResult {
+    start(
+        key: string,
+        policy: Concurrency,
+        identity: RequestIdentity,
+        unresolvedOutcome: UnresolvedOutcomePolicy = 'block',
+    ): RegistryStartResult {
         const records = this.records.get(key) ?? [];
+        const claim = this.claims.get(key);
+        if (claim && policy !== 'parallel') {
+            if (policy === 'single_flight' ||
+                (policy === 'latest_wins' && unresolvedOutcome === 'join')) {
+                return { kind: 'joined_logical', identity: claim.identity, channel: claim.channel };
+            }
+            if (policy === 'latest_wins') return { kind: 'blocked', identity: claim.identity };
+            if (policy === 'queue') {
+                const record = this.createRecord(key, policy, identity, true);
+                records.push(record);
+                this.records.set(key, records);
+                return { kind: 'queued', record, position: records.length };
+            }
+        }
         if (policy === 'single_flight') {
             const active = records.find((record) => !record.cancelling);
             if (active) return { kind: 'joined', record: active };
@@ -82,6 +111,7 @@ export class OperationRegistry {
         const records = this.records.get(key) ?? [];
         if (records.some((record) => !sameIdentity(record.identity, identity))) return { kind: 'rejected' };
         const record = this.createRecord(key, policy, identity, false);
+        this.claims.delete(key);
         records.push(record);
         this.records.set(key, records);
         return { kind: 'replaced', record };
@@ -130,6 +160,7 @@ export class OperationRegistry {
             channel.terminalSnapshot = state;
             this.snapshots.set(channel.key, state);
             this.evictSnapshots();
+            this.releaseLogicalClaim(identity);
         }
         for (const listener of [...channel.listeners]) safeCall(() => listener(state));
         return true;
@@ -146,13 +177,20 @@ export class OperationRegistry {
         return true;
     }
 
+    closeLogical(identity: RequestIdentity): boolean {
+        return this.releaseLogicalClaim(identity);
+    }
+
     observe(identity: RequestIdentity, listener: Listener): () => void {
         const channel = this.channelFor(identity);
         if (!channel) return () => undefined;
         channel.listeners.add(listener);
         const snapshot = channel.state ?? channel.terminalSnapshot ?? this.snapshots.get(channel.key);
         if (snapshot) safeCall(() => listener(snapshot));
-        return () => channel.listeners.delete(listener);
+        return () => {
+            channel.listeners.delete(listener);
+            this.reapChannel(channel);
+        };
     }
 
     getState(identity: RequestIdentity): OperationState<unknown> | undefined {
@@ -239,13 +277,44 @@ export class OperationRegistry {
 
     private releaseResources(record: RegisteredOperation): void {
         record.cancellationHandlers.clear();
-        const records = [...this.records.values()].some((items) => items.some((item) => item.channel === record.channel));
-        if (!records && record.channel.listeners.size === 0 &&
-            record.channel.state?.status !== 'awaiting_outcome' &&
-            !record.channel.terminalSnapshot) {
-            record.channel.listeners.clear();
-            this.channels.delete(record.channel.key);
+        const unresolved = record.channel.state?.status === 'awaiting_outcome' ||
+            record.channel.state?.status === 'reconciling';
+        if (unresolved) {
+            this.claims.set(record.key, {
+                key: record.key, policy: record.policy, identity: record.identity, channel: record.channel,
+            });
+        } else if (record.channel.terminalSnapshot) {
+            this.releaseLogicalClaim(record.identity);
         }
+        this.reapChannel(record.channel);
+    }
+
+    private reapChannel(channel: LogicalChannel): void {
+        const referenced = [...this.records.values()].some((items) =>
+            items.some((item) => item.channel === channel));
+        const claimed = [...this.claims.values()].some((claim) => claim.channel === channel);
+        const unresolved = channel.state?.status === 'awaiting_outcome' ||
+            channel.state?.status === 'reconciling';
+        if (!referenced && !claimed && !unresolved && channel.listeners.size === 0 &&
+            !channel.terminalSnapshot) {
+            this.channels.delete(channel.key);
+        }
+    }
+
+    private releaseLogicalClaim(identity: RequestIdentity): boolean {
+        for (const [key, claim] of this.claims) {
+            if (!sameIdentity(claim.identity, identity)) continue;
+            this.claims.delete(key);
+            this.reapChannel(claim.channel);
+            const records = this.records.get(key);
+            const promoted = records?.[0];
+            if (promoted) {
+                promoted.queued = false;
+                safeCall(() => promoted.onPromote?.());
+            }
+            return true;
+        }
+        return false;
     }
 
     private evictSnapshots(): void {
@@ -254,9 +323,10 @@ export class OperationRegistry {
             if (oldest === undefined) break;
             this.snapshots.delete(oldest);
             const channel = this.channels.get(oldest);
-            const active = channel && [...this.records.values()].some((items) =>
-                items.some((item) => item.channel === channel));
-            if (channel && !active && channel.listeners.size === 0) this.channels.delete(oldest);
+            if (channel) {
+                channel.terminalSnapshot = undefined;
+                this.reapChannel(channel);
+            }
         }
     }
 }

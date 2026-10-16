@@ -5,7 +5,7 @@
 **Phase 1 corrective pass implemented and frontend-verified; final acceptance
 blocked by the PHP baseline environment.**
 
-Required base commit verified: `cc228be9392f4f945ddd3cc5ee88bc2518894ecc`.
+Required base commit verified: `acdb18c8358c71db77f734b7712c931647272304`.
 This document records a correction pass for review; it does not grant Phase 1
 acceptance.
 
@@ -75,7 +75,7 @@ Native WSL build baseline:
 - `npx tsc --noEmit`: **failed on an unrelated pre-existing error**:
   `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657:
   JSX expressions must have one parent element.`
-- `npm test -- --run`: **passed**, 3 test files and 28 tests.
+- `npm test -- --run`: **passed**, 3 test files and 32 tests.
 - Focused URLM TypeScript check with the repository baseline error excluded:
   **passed**.
 - `npm run typecheck:urlm`: **passed**.
@@ -177,6 +177,12 @@ caused by URLM production changes.
   while retaining bounded logical observation.
 - [x] Post-finalization classification publishes through the logical channel
   after the transport lease is released, while stale attempts remain rejected.
+- [x] Unresolved logical conflict claims survive transport release; single-flight
+  joins, queue ordering, and safe latest-wins blocking are cross-coordinator.
+- [x] Recordless unresolved disposal publishes `abandoned`, releases the claim,
+  and does not invoke finished transport cancellation handlers.
+- [x] Channel release, snapshot eviction, unsubscribe, and logical closure use
+  one centralized reaping predicate.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
 - [x] URLM tests, focused URLM typecheck, and production build pass; repository

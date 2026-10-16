@@ -48,8 +48,13 @@ isolated registry. Logical channels own state, observers, and retry identity.
 Transport attempt records own `AbortController` instances, cancellation
 handlers, and watchdog authority. Registry records are concurrency leases
 implementing latest-wins, single-flight, parallel, and FIFO queue semantics.
-One coordinator owns one unresolved lifecycle; parallel work requires separate
-coordinators. Terminal error UI does not keep a lease occupied indefinitely.
+Unresolved logical lifecycles retain a separate conflict claim after transport
+release. Single-flight callers join that claim, queue callers remain behind it,
+and latest-wins callers receive a typed blocked result by default because an
+unknown side effect must not be silently superseded. Parallel work remains
+parallel. One coordinator owns one unresolved lifecycle; parallel work
+requires separate coordinators. Terminal error UI does not keep a lease
+occupied indefinitely.
 Queued handles expose a subscription that receives activation through the
 reducer exactly once; cancellation/disposal before promotion cannot activate.
 This is in-memory coordination only; durable mutation protection belongs to a
@@ -92,6 +97,10 @@ channels survive atomic retry replacement, isolate listener exceptions, and
 retain only bounded terminal snapshots. Evicting a snapshot also evicts its
 inactive, unsubscribed logical channel; active, awaiting-classification, and
 observed channels remain available until their lifecycle is complete.
+The unsubscribe callback invokes the same centralized reaping predicate used
+by release, eviction, and logical closure. Disposal of a recordless unresolved
+lifecycle publishes `abandoned`, releases its conflict claim, and does not
+invent a transport cancellation callback.
 Diagnostics contain only event/status metadata and shortened identity
 references; raw events and states never cross the diagnostic boundary.
 Failure classification accepts only normalized discriminated inputs. Arbitrary
