@@ -55,6 +55,9 @@ unknown side effect must not be silently superseded. Parallel work remains
 parallel. One coordinator owns one unresolved lifecycle; parallel work
 requires separate coordinators. Terminal error UI does not keep a lease
 occupied indefinitely.
+Queue positions are one-based snapshots among waiting records; the unresolved
+owner is not counted. Promotion is suppressed while the claim exists and
+occurs exactly once after terminal classification or explicit logical closure.
 Queued handles expose a subscription that receives activation through the
 reducer exactly once; cancellation/disposal before promotion cannot activate.
 This is in-memory coordination only; durable mutation protection belongs to a
@@ -101,6 +104,11 @@ The unsubscribe callback invokes the same centralized reaping predicate used
 by release, eviction, and logical closure. Disposal of a recordless unresolved
 lifecycle publishes `abandoned`, releases its conflict claim, and does not
 invent a transport cancellation callback.
+`cancel()` returns an explicit result: live transport cancellation returns
+`cancelled`; recordless unknown-outcome lifecycles return
+`not_cancellable: outcome_unknown`; terminal and disposed coordinators return
+`already_terminal` and `disposed`. Local abandonment is distinct from backend
+cancellation.
 Diagnostics contain only event/status metadata and shortened identity
 references; raw events and states never cross the diagnostic boundary.
 Failure classification accepts only normalized discriminated inputs. Arbitrary

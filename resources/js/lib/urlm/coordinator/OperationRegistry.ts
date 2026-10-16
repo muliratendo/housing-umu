@@ -40,7 +40,11 @@ export type RegistryStartResult =
     | { kind: 'blocked'; identity: RequestIdentity };
 
 export type RegistryReleaseResult = { released: boolean; promoted?: RegisteredOperation };
-export type RegistryReplaceResult = { kind: 'replaced'; record: RegisteredOperation } | { kind: 'rejected' };
+type ReleaseResourcesResult = 'logical_claim_retained' | 'logical_closed' | 'terminal_snapshot_retained';
+export type RegistryReplaceResult =
+    | { kind: 'replaced'; record: RegisteredOperation }
+    | { kind: 'blocked_by_claim'; identity: RequestIdentity }
+    | { kind: 'rejected' };
 
 const terminalStatuses = new Set([
     'succeeded', 'empty', 'validation_failed', 'auth_required', 'forbidden',
@@ -109,10 +113,14 @@ export class OperationRegistry {
 
     reacquire(key: string, policy: Concurrency, identity: RequestIdentity): RegistryReplaceResult {
         const records = this.records.get(key) ?? [];
+        const claim = this.claims.get(key);
+        if (claim && !sameIdentity(claim.identity, identity)) {
+            return { kind: 'blocked_by_claim', identity: claim.identity };
+        }
         if (records.some((record) => !sameIdentity(record.identity, identity))) return { kind: 'rejected' };
         const record = this.createRecord(key, policy, identity, false);
-        this.claims.delete(key);
-        records.push(record);
+        if (claim) this.claims.delete(key);
+        records.unshift(record);
         this.records.set(key, records);
         return { kind: 'replaced', record };
     }
@@ -204,8 +212,11 @@ export class OperationRegistry {
             if (index < 0) continue;
             const [record] = records.splice(index, 1);
             this.abortResources(record);
-            this.releaseResources(record);
-            const promoted = record.policy === 'queue' && index === 0 ? records[0] : undefined;
+            const cleanup = this.releaseResources(record);
+            const promoted = cleanup !== 'logical_claim_retained' && record.policy === 'queue' && index === 0 &&
+                records[0]?.queued
+                ? records[0]
+                : undefined;
             if (promoted) {
                 promoted.queued = false;
                 safeCall(() => promoted.onPromote?.());
@@ -275,7 +286,7 @@ export class OperationRegistry {
         record.cancellationHandlers.clear();
     }
 
-    private releaseResources(record: RegisteredOperation): void {
+    private releaseResources(record: RegisteredOperation): ReleaseResourcesResult {
         record.cancellationHandlers.clear();
         const unresolved = record.channel.state?.status === 'awaiting_outcome' ||
             record.channel.state?.status === 'reconciling';
@@ -283,10 +294,15 @@ export class OperationRegistry {
             this.claims.set(record.key, {
                 key: record.key, policy: record.policy, identity: record.identity, channel: record.channel,
             });
+            this.reapChannel(record.channel);
+            return 'logical_claim_retained';
         } else if (record.channel.terminalSnapshot) {
             this.releaseLogicalClaim(record.identity);
+            this.reapChannel(record.channel);
+            return 'terminal_snapshot_retained';
         }
         this.reapChannel(record.channel);
+        return 'logical_closed';
     }
 
     private reapChannel(channel: LogicalChannel): void {

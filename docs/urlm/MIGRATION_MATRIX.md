@@ -51,4 +51,7 @@ logical observation needed for retry or classification.
 Unknown outcomes additionally retain a logical conflict claim after transport
 release. Single-flight callers join it, queue callers remain FIFO behind it,
 and latest-wins callers receive a safe typed block by default. Recordless
-disposal closes the logical lifecycle with `abandoned`.
+disposal closes the logical lifecycle with `abandoned`. Queue positions are
+one-based waiting snapshots. Retry reacquisition compares the expected logical
+owner and never deletes a claim by conflict key alone. Live cancellation and
+local abandonment are separate outcomes.

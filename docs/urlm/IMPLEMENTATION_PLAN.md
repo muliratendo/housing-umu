@@ -113,10 +113,16 @@ test and the environmental baselines are reviewed:
 - unresolved logical claims survive transport release: single-flight joins,
   queue ordering, and safe latest-wins blocking remain authoritative until
   classification or logical closure;
+- queue positions are one-based snapshots among waiting records, and an
+  unresolved owner is not counted;
 - recordless awaiting/reconciling disposal publishes deterministic `abandoned`
   closure, releases the claim, and notifies joined observers exactly once;
 - channel release, snapshot eviction, unsubscribe, and logical closure share
   one reaping predicate;
+- retry reacquisition requires exact claim ownership and rejects foreign or
+  newer-generation claims without consuming retry budget;
+- cancellation returns an explicit result and never silently refuses a
+  recordless unknown-outcome lifecycle;
 - arbitrary callback failures cannot interrupt cleanup or promotion;
 - reconciliation can resolve to success, failure, unknown failure, or valid
   cancellation;

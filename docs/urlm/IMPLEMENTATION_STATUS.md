@@ -75,7 +75,7 @@ Native WSL build baseline:
 - `npx tsc --noEmit`: **failed on an unrelated pre-existing error**:
   `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657:
   JSX expressions must have one parent element.`
-- `npm test -- --run`: **passed**, 3 test files and 32 tests.
+- `npm test -- --run`: **passed**, 3 test files and 35 tests.
 - Focused URLM TypeScript check with the repository baseline error excluded:
   **passed**.
 - `npm run typecheck:urlm`: **passed**.
@@ -183,6 +183,12 @@ caused by URLM production changes.
   and does not invoke finished transport cancellation handlers.
 - [x] Channel release, snapshot eviction, unsubscribe, and logical closure use
   one centralized reaping predicate.
+- [x] Queue promotion is suppressed while an unresolved claim remains and
+  occurs exactly once after terminal classification or closure.
+- [x] Retry reacquisition requires exact logical claim ownership and rejects
+  foreign claims without consuming retry budget.
+- [x] Cancellation returns explicit results; unknown-outcome lifecycles are
+  `not_cancellable` rather than silently ignored.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
 - [x] URLM tests, focused URLM typecheck, and production build pass; repository

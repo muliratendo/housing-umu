@@ -260,6 +260,65 @@ describe('URLM coordination', () => {
         expect(queued.getState().status).toBe('validating');
     });
 
+    it('does not promote an existing queue behind an unresolved owner', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'queue' as const };
+        const owner = new OperationCoordinator('queue-claim', profile, registry);
+        const waiting = new OperationCoordinator('queue-claim', profile, registry);
+        const ownerId = startedIdentity(owner.start());
+        const queued = waiting.start();
+        expect(queued?.kind).toBe('queued');
+        if (!queued || queued.kind !== 'queued') return;
+        const activated: string[] = [];
+        queued.subscribe((state) => activated.push(state.status));
+        owner.finalize(ownerId);
+        expect(waiting.getState().status).toBe('queued');
+        expect(activated).toEqual(['queued']);
+        owner.dispatch({ type: 'TIMEOUT_UNKNOWN', identity: ownerId });
+        expect(activated).toEqual(['queued']);
+        owner.dispatch({ type: 'RECONCILE_SUCCESS', identity: ownerId });
+        expect(activated).toEqual(['queued', 'validating']);
+        owner.finalize(ownerId);
+        expect(activated).toEqual(['queued', 'validating']);
+    });
+
+    it('rejects retry when a newer foreign claim owns the key', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, retry: 'safe_transient' as const, concurrency: 'single_flight' as const };
+        const older = new OperationCoordinator('retry-claim', profile, registry);
+        const olderId = startedIdentity(older.start());
+        older.dispatch({ type: 'NETWORK_LOST', identity: olderId });
+        const newer = new OperationCoordinator('retry-claim', profile, registry);
+        const newerId = startedIdentity(newer.start());
+        newer.finalize(newerId);
+        const retry = older.retry('user');
+        expect(retry).toEqual({ kind: 'blocked_by_claim', identity: newerId });
+        expect(older.getIdentity()).toEqual(olderId);
+        expect(newer.start().kind).toBe('already_owner');
+        expect(registry.getState(newerId)?.status).toBe('awaiting_outcome');
+    });
+
+    it('returns explicit cancellation results for live, unknown, terminal, and disposed states', () => {
+        const live = new OperationCoordinator('cancel-results-live', profiles.read);
+        startedIdentity(live.start());
+        expect(live.cancel()).toEqual({ kind: 'cancelled' });
+
+        const unknown = new OperationCoordinator('cancel-results-unknown', profiles.read);
+        const unknownId = startedIdentity(unknown.start());
+        unknown.finalize(unknownId);
+        expect(unknown.cancel()).toEqual({ kind: 'not_cancellable', reason: 'outcome_unknown' });
+
+        const terminal = new OperationCoordinator('cancel-results-terminal', profiles.read);
+        const terminalId = startedIdentity(terminal.start());
+        terminal.dispatch({ type: 'CLIENT_VALID', identity: terminalId });
+        terminal.dispatch({ type: 'SUCCESS', identity: terminalId });
+        expect(terminal.cancel()).toEqual({ kind: 'already_terminal' });
+
+        const disposed = new OperationCoordinator('cancel-results-disposed', profiles.read);
+        disposed.dispose();
+        expect(disposed.cancel()).toEqual({ kind: 'disposed' });
+    });
+
     it('closes recordless unresolved lifecycles on disposal', () => {
         const registry = new OperationRegistry();
         const profile = { ...profiles.read, concurrency: 'single_flight' as const };

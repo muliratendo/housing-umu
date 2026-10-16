@@ -30,7 +30,15 @@ export type StartResult<T> =
 
 export type RetryResult =
     | { kind: 'started'; identity: RequestIdentity }
+    | { kind: 'blocked_by_claim'; identity: RequestIdentity }
     | { kind: 'policy' | 'ineligible' | 'disposed' | 'not_active' | 'budget_exhausted' };
+
+export type CancelResult =
+    | { kind: 'cancelled' }
+    | { kind: 'not_cancellable'; reason: 'outcome_unknown' }
+    | { kind: 'already_terminal' }
+    | { kind: 'disposed' }
+    | { kind: 'stale' };
 
 export type FinalizeResult =
     | { kind: 'outcome_accepted' }
@@ -97,6 +105,9 @@ export class OperationCoordinator<T> {
         const replacement = this.registry.getByIdentity(previous)
             ? this.registry.replace(this.key, previous, next)
             : this.registry.reacquire(this.key, this.profile.concurrency, next);
+        if (replacement.kind === 'blocked_by_claim') {
+            return { kind: 'blocked_by_claim', identity: replacement.identity };
+        }
         if (replacement.kind === 'rejected') return { kind: 'policy' };
         this.timers.clear(previous);
         this.identity = replacement.record.identity;
@@ -163,8 +174,16 @@ export class OperationCoordinator<T> {
         return this.identity ? this.registry.registerCancellation(this.identity, handler) : () => undefined;
     }
 
-    cancel(cause: 'user' | 'navigation' | 'transport' = 'user'): void {
-        if (this.identity) this.registry.cancel(this.key, this.identity, cause);
+    cancel(cause: 'user' | 'navigation' | 'transport' = 'user'): CancelResult {
+        if (this.disposed) return { kind: 'disposed' };
+        if (!this.identity) return { kind: 'stale' };
+        if (isTerminal(this.state)) return { kind: 'already_terminal' };
+        if (this.state.status === 'awaiting_outcome' || this.state.status === 'reconciling') {
+            return { kind: 'not_cancellable', reason: 'outcome_unknown' };
+        }
+        return this.registry.cancel(this.key, this.identity, cause)
+            ? { kind: 'cancelled' }
+            : { kind: 'stale' };
     }
 
     dispose(): void {
