@@ -60,7 +60,7 @@ export class OperationRegistry {
     private readonly records = new Map<string, RegisteredOperation[]>();
     private readonly channels = new Map<string, LogicalChannel>();
     private readonly snapshots = new Map<string, OperationState<unknown>>();
-    private readonly claims = new Map<string, LogicalClaim>();
+    private readonly claims = new Map<string, LogicalClaim[]>();
     private generation = 0;
 
     start(
@@ -70,7 +70,8 @@ export class OperationRegistry {
         unresolvedOutcome: UnresolvedOutcomePolicy = 'block',
     ): RegistryStartResult {
         const records = this.records.get(key) ?? [];
-        const claim = this.claims.get(key);
+        const claims = this.claims.get(key) ?? [];
+        const claim = claims.find((candidate) => candidate.policy !== 'parallel');
         if (claim && policy !== 'parallel') {
             if (policy === 'single_flight' ||
                 (policy === 'latest_wins' && unresolvedOutcome === 'join')) {
@@ -81,7 +82,7 @@ export class OperationRegistry {
                 const record = this.createRecord(key, policy, identity, true);
                 records.push(record);
                 this.records.set(key, records);
-                return { kind: 'queued', record, position: records.length };
+                return { kind: 'queued', record, position: records.filter((item) => item.queued).length };
             }
         }
         if (policy === 'single_flight') {
@@ -95,7 +96,7 @@ export class OperationRegistry {
         records.push(record);
         this.records.set(key, records);
         return record.queued
-            ? { kind: 'queued', record, position: records.length - 1 }
+            ? { kind: 'queued', record, position: records.filter((item) => item.queued).length }
             : { kind: 'started', record };
     }
 
@@ -111,15 +112,35 @@ export class OperationRegistry {
         return { kind: 'replaced', record: replacement };
     }
 
-    reacquire(key: string, policy: Concurrency, identity: RequestIdentity): RegistryReplaceResult {
+    reacquire(
+        key: string,
+        policy: Concurrency,
+        expectedOwner: RequestIdentity,
+        nextIdentity: RequestIdentity,
+    ): RegistryReplaceResult {
         const records = this.records.get(key) ?? [];
-        const claim = this.claims.get(key);
-        if (claim && !sameIdentity(claim.identity, identity)) {
+        const claims = this.claims.get(key) ?? [];
+        const claim = claims.find((candidate) =>
+            candidate.policy === 'parallel'
+                ? candidate.identity.operationId === expectedOwner.operationId
+                : true);
+        if (claim && !sameIdentity(claim.identity, expectedOwner)) {
             return { kind: 'blocked_by_claim', identity: claim.identity };
         }
-        if (records.some((record) => !sameIdentity(record.identity, identity))) return { kind: 'rejected' };
-        const record = this.createRecord(key, policy, identity, false);
-        if (claim) this.claims.delete(key);
+        if (expectedOwner.operationId !== nextIdentity.operationId ||
+            expectedOwner.correlationId !== nextIdentity.correlationId ||
+            expectedOwner.idempotencyKey !== nextIdentity.idempotencyKey ||
+            expectedOwner.attemptId === nextIdentity.attemptId ||
+            nextIdentity.generation <= expectedOwner.generation) {
+            return { kind: 'rejected' };
+        }
+        if (policy !== 'parallel' &&
+            records.some((record) => !record.queued && !sameIdentity(record.identity, expectedOwner))) {
+            return { kind: 'rejected' };
+        }
+        const record = this.createRecord(key, policy, nextIdentity, false);
+        record.channel = claim?.channel ?? this.channelFor(expectedOwner) ?? record.channel;
+        if (claim) this.removeClaim(key, claim);
         records.unshift(record);
         this.records.set(key, records);
         return { kind: 'replaced', record };
@@ -249,6 +270,7 @@ export class OperationRegistry {
     }
 
     activeRecordCount(): number { return [...this.records.values()].reduce((count, records) => count + records.length, 0); }
+    claimCount(): number { return [...this.claims.values()].reduce((count, claims) => count + claims.length, 0); }
     channelCount(): number { return this.channels.size; }
     terminalSnapshotCount(): number { return this.snapshots.size; }
 
@@ -291,9 +313,11 @@ export class OperationRegistry {
         const unresolved = record.channel.state?.status === 'awaiting_outcome' ||
             record.channel.state?.status === 'reconciling';
         if (unresolved) {
-            this.claims.set(record.key, {
+            const claims = this.claims.get(record.key) ?? [];
+            if (!claims.some((claim) => sameIdentity(claim.identity, record.identity))) claims.push({
                 key: record.key, policy: record.policy, identity: record.identity, channel: record.channel,
             });
+            this.claims.set(record.key, claims);
             this.reapChannel(record.channel);
             return 'logical_claim_retained';
         } else if (record.channel.terminalSnapshot) {
@@ -308,7 +332,8 @@ export class OperationRegistry {
     private reapChannel(channel: LogicalChannel): void {
         const referenced = [...this.records.values()].some((items) =>
             items.some((item) => item.channel === channel));
-        const claimed = [...this.claims.values()].some((claim) => claim.channel === channel);
+        const claimed = [...this.claims.values()].some((claims) =>
+            claims.some((claim) => claim.channel === channel));
         const unresolved = channel.state?.status === 'awaiting_outcome' ||
             channel.state?.status === 'reconciling';
         if (!referenced && !claimed && !unresolved && channel.listeners.size === 0 &&
@@ -318,19 +343,28 @@ export class OperationRegistry {
     }
 
     private releaseLogicalClaim(identity: RequestIdentity): boolean {
-        for (const [key, claim] of this.claims) {
-            if (!sameIdentity(claim.identity, identity)) continue;
-            this.claims.delete(key);
+        for (const [key, claims] of this.claims) {
+            const claim = claims.find((candidate) => sameIdentity(candidate.identity, identity));
+            if (!claim) continue;
+            this.removeClaim(key, claim);
             this.reapChannel(claim.channel);
             const records = this.records.get(key);
-            const promoted = records?.[0];
-            if (promoted) {
+            const promoted = claim.policy !== 'parallel' && records?.find((record) => record.queued);
+            if (promoted && records?.[0] === promoted) {
                 promoted.queued = false;
                 safeCall(() => promoted.onPromote?.());
             }
             return true;
         }
         return false;
+    }
+
+    private removeClaim(key: string, claim: LogicalClaim): void {
+        const claims = this.claims.get(key);
+        if (!claims) return;
+        const remaining = claims.filter((candidate) => candidate !== claim);
+        if (remaining.length === 0) this.claims.delete(key);
+        else this.claims.set(key, remaining);
     }
 
     private evictSnapshots(): void {

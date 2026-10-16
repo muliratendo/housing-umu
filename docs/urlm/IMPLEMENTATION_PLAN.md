@@ -123,6 +123,8 @@ test and the environmental baselines are reviewed:
   newer-generation claims without consuming retry budget;
 - cancellation returns an explicit result and never silently refuses a
   recordless unknown-outcome lifecycle;
+- parallel unresolved lifecycles retain independent claims and can reacquire
+  independently without affecting each other's channels, timers, or records;
 - arbitrary callback failures cannot interrupt cleanup or promotion;
 - reconciliation can resolve to success, failure, unknown failure, or valid
   cancellation;

@@ -10,4 +10,6 @@ export const acceptsIdentity = (active: RequestIdentity | undefined, event: Requ
 export const isRetryEligible = <T>(state: OperationState<T>): boolean =>
     state.status === 'offline' ||
     state.status === 'timed_out' ||
+    state.status === 'awaiting_outcome' ||
+    state.status === 'reconciling' ||
     (state.status === 'failed' && state.retryable);

@@ -104,7 +104,7 @@ export class OperationCoordinator<T> {
         const next = retryIdentity(previous, previous.generation + 1);
         const replacement = this.registry.getByIdentity(previous)
             ? this.registry.replace(this.key, previous, next)
-            : this.registry.reacquire(this.key, this.profile.concurrency, next);
+            : this.registry.reacquire(this.key, this.profile.concurrency, previous, next);
         if (replacement.kind === 'blocked_by_claim') {
             return { kind: 'blocked_by_claim', identity: replacement.identity };
         }

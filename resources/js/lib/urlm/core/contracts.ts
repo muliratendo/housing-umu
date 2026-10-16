@@ -89,5 +89,5 @@ export const TERMINAL_STATUSES = [
 ] as const;
 
 export type RetryEligibleState<T> =
-    | Extract<OperationState<T>, { status: 'offline' | 'timed_out' }>
+    | Extract<OperationState<T>, { status: 'offline' | 'timed_out' | 'awaiting_outcome' | 'reconciling' }>
     | Extract<OperationState<T>, { status: 'failed'; retryable: true }>;

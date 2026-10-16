@@ -5,7 +5,7 @@
 **Phase 1 corrective pass implemented and frontend-verified; final acceptance
 blocked by the PHP baseline environment.**
 
-Required base commit verified: `acdb18c8358c71db77f734b7712c931647272304`.
+Required base commit verified: `40201de1b5b45078c6b820e6cf71293b6f8a3aff`.
 This document records a correction pass for review; it does not grant Phase 1
 acceptance.
 
@@ -75,7 +75,8 @@ Native WSL build baseline:
 - `npx tsc --noEmit`: **failed on an unrelated pre-existing error**:
   `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657:
   JSX expressions must have one parent element.`
-- `npm test -- --run`: **passed**, 3 test files and 35 tests.
+- `npm test -- --run`: **passed**, 3 test files and 38 tests.
+- Latest claim-reacquisition/cancellation pass: **passed**, 3 test files and 38 tests.
 - Focused URLM TypeScript check with the repository baseline error excluded:
   **passed**.
 - `npm run typecheck:urlm`: **passed**.
@@ -103,6 +104,9 @@ Created:
 - `resources/js/lib/urlm/index.ts`
 - `resources/js/lib/urlm/core/reducer.test.ts`
 - `resources/js/lib/urlm/coordinator/coordinators.test.ts`
+  - Covers one-based queue positions and live cancellation transaction
+    guarantees, including exactly-once cancellation handlers and observer
+    publication.
 - `resources/js/lib/urlm/classification/failureDescriptor.test.ts`
 - `vitest.config.ts`
 - `tsconfig.urlm.json`
@@ -189,6 +193,12 @@ caused by URLM production changes.
   foreign claims without consuming retry budget.
 - [x] Cancellation returns explicit results; unknown-outcome lifecycles are
   `not_cancellable` rather than silently ignored.
+- [x] Reacquisition receives an exact expected owner separately from the next
+  attempt and validates logical identity plus strictly increasing generation.
+- [x] Queue-owner reacquisition preserves FIFO followers and suppresses
+  promotion until terminal classification or closure.
+- [x] Parallel unresolved claims remain independently addressable and do not
+  overwrite one another.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
 - [x] URLM tests, focused URLM typecheck, and production build pass; repository

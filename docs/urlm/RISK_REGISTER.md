@@ -33,3 +33,5 @@
 | R29 | Queue promotion occurs while the logical owner is still unresolved. | High | Critical | Make release derive promotion from explicit cleanup result; retain queued FIFO records until terminal classification or closure. | Frontend / 1 |
 | R30 | Retry removes a foreign logical claim by conflict key. | High | Critical | Require exact logical claim ownership before reacquisition; return typed blocked results without consuming retry budget. | Frontend / 1 |
 | R31 | Recordless cancellation silently fails after transport completion. | Medium | High | Return explicit cancellation results and distinguish backend cancellation from local abandonment. | Frontend / 1 |
+| R32 | Retry compares a new attempt against an old attempt claim and rejects legitimate reacquisition. | High | High | Pass expected owner and proposed next identity separately; validate logical continuity and increasing generation before atomic replacement. | Frontend / 1 |
+| R33 | Parallel unresolved lifecycles overwrite a single conflict claim. | High | Critical | Store parallel claims by logical identity and release only the exact owner. | Frontend / 1 |

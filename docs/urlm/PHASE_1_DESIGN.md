@@ -52,9 +52,10 @@ Unresolved logical lifecycles retain a separate conflict claim after transport
 release. Single-flight callers join that claim, queue callers remain behind it,
 and latest-wins callers receive a typed blocked result by default because an
 unknown side effect must not be silently superseded. Parallel work remains
-parallel. One coordinator owns one unresolved lifecycle; parallel work
-requires separate coordinators. Terminal error UI does not keep a lease
-occupied indefinitely.
+parallel, with separate claims indexed by logical identity so parallel
+lifecycles cannot overwrite one another. One coordinator owns one unresolved
+lifecycle; parallel work requires separate coordinators. Terminal error UI does
+not keep a lease occupied indefinitely.
 Queue positions are one-based snapshots among waiting records; the unresolved
 owner is not counted. Promotion is suppressed while the claim exists and
 occurs exactly once after terminal classification or explicit logical closure.

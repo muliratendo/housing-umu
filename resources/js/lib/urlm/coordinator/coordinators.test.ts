@@ -25,6 +25,53 @@ describe('URLM coordination', () => {
         expect(retry.identity.attemptId).not.toBe(first.attemptId);
     });
 
+    it('reacquires an owned unresolved claim without disturbing queued followers', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'queue' as const, retry: 'safe_transient' as const };
+        const owner = new OperationCoordinator('owned-retry', profile, registry);
+        const follower = new OperationCoordinator('owned-retry', profile, registry);
+        const first = startedIdentity(owner.start('stable'));
+        const queued = follower.start();
+        expect(queued?.kind).toBe('queued');
+        if (!queued || queued.kind !== 'queued') return;
+        const unsubscribe = queued.subscribe(() => undefined);
+        owner.finalize(first);
+        const retry = owner.retry('user');
+        expect(retry.kind).toBe('started');
+        if (retry.kind !== 'started') return;
+        expect(retry.identity.operationId).toBe(first.operationId);
+        expect(retry.identity.correlationId).toBe(first.correlationId);
+        expect(retry.identity.idempotencyKey).toBe(first.idempotencyKey);
+        expect(retry.identity.attemptId).not.toBe(first.attemptId);
+        expect(retry.identity.generation).toBeGreaterThan(first.generation);
+        expect(follower.getState().status).toBe('queued');
+        owner.dispatch({ type: 'SUCCESS', identity: retry.identity });
+        expect(follower.getState().status).toBe('validating');
+        unsubscribe();
+    });
+
+    it('keeps parallel unresolved claims independently addressable', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'parallel' as const };
+        const first = new OperationCoordinator('parallel-claims', profile, registry);
+        const second = new OperationCoordinator('parallel-claims', profile, registry);
+        const firstId = startedIdentity(first.start());
+        const secondId = startedIdentity(second.start());
+        first.finalize(firstId);
+        second.finalize(secondId);
+        expect(first.getState().status).toBe('awaiting_outcome');
+        expect(second.getState().status).toBe('awaiting_outcome');
+        const firstRetry = first.retry('user');
+        expect(firstRetry.kind).toBe('started');
+        expect(second.getState().status).toBe('awaiting_outcome');
+        const secondRetry = second.retry('user');
+        expect(secondRetry.kind).toBe('started');
+        if (firstRetry.kind !== 'started' || secondRetry.kind !== 'started') return;
+        second.dispatch({ type: 'SUCCESS', identity: secondRetry.identity });
+        expect(first.getState().status).toBe('submitting');
+        expect(second.getState().status).toBe('succeeded');
+    });
+
     it('releases terminal single-flight slots and coordinates separate coordinators', () => {
         const registry = new OperationRegistry();
         const one = new OperationCoordinator('auth', profiles.authentication, registry);
@@ -280,6 +327,34 @@ describe('URLM coordination', () => {
         expect(activated).toEqual(['queued', 'validating']);
         owner.finalize(ownerId);
         expect(activated).toEqual(['queued', 'validating']);
+    });
+
+    it('uses one-based queue positions and completes live cancellation transaction', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'queue' as const };
+        const owner = new OperationCoordinator('queue-position', profile, registry);
+        const first = new OperationCoordinator('queue-position', profile, registry);
+        const second = new OperationCoordinator('queue-position', profile, registry);
+        const ownerId = startedIdentity(owner.start());
+        const firstQueued = first.start();
+        const secondQueued = second.start();
+        expect(firstQueued?.kind).toBe('queued');
+        expect(secondQueued?.kind).toBe('queued');
+        if (!firstQueued || firstQueued.kind !== 'queued' ||
+            !secondQueued || secondQueued.kind !== 'queued') return;
+        expect(firstQueued.position).toBe(1);
+        expect(secondQueued.position).toBe(2);
+        const received: string[] = [];
+        registry.observe(ownerId, (state) => received.push(state.status));
+        const handler = vi.fn();
+        owner.registerCancellation(handler);
+        expect(owner.cancel()).toEqual({ kind: 'cancelled' });
+        expect(owner.getState().status).toBe('cancelled');
+        expect(received).toEqual(['validating', 'cancelled']);
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(first.getState().status).toBe('validating');
+        expect(second.getState().status).toBe('queued');
+        expect(registry.activeRecordCount()).toBe(2);
     });
 
     it('rejects retry when a newer foreign claim owns the key', () => {

@@ -55,3 +55,5 @@ disposal closes the logical lifecycle with `abandoned`. Queue positions are
 one-based waiting snapshots. Retry reacquisition compares the expected logical
 owner and never deletes a claim by conflict key alone. Live cancellation and
 local abandonment are separate outcomes.
+Parallel policy stores unresolved claims by logical identity, so retry or
+closure of one parallel lifecycle cannot release another lifecycle's claim.
