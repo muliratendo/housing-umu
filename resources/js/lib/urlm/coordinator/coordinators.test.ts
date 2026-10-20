@@ -50,6 +50,35 @@ describe('URLM coordination', () => {
         unsubscribe();
     });
 
+    it('preserves two FIFO followers across unresolved claim reacquisition', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'queue' as const, retry: 'safe_transient' as const };
+        const owner = new OperationCoordinator('owned-retry-two-followers', profile, registry);
+        const firstFollower = new OperationCoordinator('owned-retry-two-followers', profile, registry);
+        const secondFollower = new OperationCoordinator('owned-retry-two-followers', profile, registry);
+        const first = startedIdentity(owner.start('stable'));
+        const firstQueued = firstFollower.start();
+        const secondQueued = secondFollower.start();
+        expect(firstQueued?.kind).toBe('queued');
+        expect(secondQueued?.kind).toBe('queued');
+        if (firstQueued?.kind !== 'queued' || secondQueued?.kind !== 'queued') return;
+
+        owner.finalize(first);
+        const retry = owner.retry('user');
+        expect(retry.kind).toBe('started');
+        expect(firstFollower.getState().status).toBe('queued');
+        expect(secondFollower.getState().status).toBe('queued');
+        if (retry.kind !== 'started') return;
+
+        owner.dispatch({ type: 'SUCCESS', identity: retry.identity });
+        expect(firstFollower.getState().status).toBe('validating');
+        expect(secondFollower.getState().status).toBe('queued');
+        const firstFollowerIdentity = firstFollower.getIdentity()!;
+        firstFollower.dispatch({ type: 'CLIENT_VALID', identity: firstFollowerIdentity });
+        firstFollower.dispatch({ type: 'SUCCESS', identity: firstFollowerIdentity });
+        expect(secondFollower.getState().status).toBe('validating');
+    });
+
     it('keeps parallel unresolved claims independently addressable', () => {
         const registry = new OperationRegistry();
         const profile = { ...profiles.read, concurrency: 'parallel' as const };
@@ -514,6 +543,31 @@ describe('URLM coordination', () => {
         expect(older.getIdentity()).toEqual(olderId);
         expect(newer.start().kind).toBe('already_owner');
         expect(registry.getState(newerId)?.status).toBe('awaiting_outcome');
+    });
+
+    it('does not consume retry budget when authority blocks the retry', () => {
+        const registry = new OperationRegistry();
+        const targetProfile = {
+            ...profiles.read,
+            concurrency: 'parallel' as const,
+            retry: 'safe_transient' as const,
+            retryBudget: 1,
+        };
+        const target = new OperationCoordinator('blocked-budget', targetProfile, registry);
+        const targetIdentity = startedIdentity(target.start());
+        target.dispatch({ type: 'NETWORK_LOST', identity: targetIdentity });
+
+        const foreign = new OperationCoordinator(
+            'blocked-budget',
+            { ...profiles.read, concurrency: 'single_flight' as const },
+            registry,
+        );
+        const foreignIdentity = startedIdentity(foreign.start());
+        foreign.finalize(foreignIdentity);
+        expect(target.retry('user')).toEqual({ kind: 'blocked_by_claim', identity: foreignIdentity });
+
+        foreign.dispatch({ type: 'SUCCESS', identity: foreignIdentity });
+        expect(target.retry('user').kind).toBe('started');
     });
 
     it('returns explicit cancellation results for live, unknown, terminal, and disposed states', () => {
