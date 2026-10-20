@@ -14,6 +14,10 @@ transport-neutral cancellation handlers, application-wide modal leasing,
 observable queue promotion and single-flight joins, blocked-validation
 recovery, reconciliation outcomes, finalization cleanup, atomic retry
 replacement, and metadata-only diagnostics.
+The corrective pass must additionally prove request repeat-safety,
+known-failure retry versus unknown-outcome reconciliation, exact claim
+reacquisition, retained-channel terminal restart, policy continuity, and
+same-logical-operation isolation under parallel concurrency.
 
 ## Phase 2 — authentication vertical slice
 
@@ -93,6 +97,12 @@ test and the environmental baselines are reviewed:
 - FINALIZE cannot create or replace an outcome;
 - retry preserves `operationId`, `correlationId`, and `idempotencyKey` while
   changing `attemptId`;
+- known retryable failures use the retained logical channel for restart;
+- uncertain outcomes are not generic retry failures;
+- safe reads may repeat when policy allows;
+- idempotency-protected mutations require a stable idempotency key;
+- non-idempotent uncertain mutations and authentication return
+  `reconciliation_required`;
 - latest-wins rejects the previous attempt;
 - single-flight suppresses duplicate triggers;
 - one coordinator cannot own two unresolved lifecycles, including parallel or
@@ -121,6 +131,12 @@ test and the environmental baselines are reviewed:
   one reaping predicate;
 - retry reacquisition requires exact claim ownership and rejects foreign or
   newer-generation claims without consuming retry budget;
+- missing claims return `claim_not_found` and never fabricate an authority
+  channel;
+- claim and lifecycle policy continuity rejects queue/single-flight/parallel
+  mismatches without state mutation;
+- parallel concurrency permits different logical operation IDs but rejects a
+  second active attempt for the same logical operation;
 - cancellation returns an explicit result and never silently refuses a
   recordless unknown-outcome lifecycle;
 - parallel unresolved lifecycles retain independent claims and can reacquire
@@ -138,6 +154,8 @@ test and the environmental baselines are reviewed:
 - only one blocking modal can exist;
 - no runtime consumer has been migrated during Phase 1;
 - existing application behavior remains unchanged;
+- all documented retry-safety, claim-authority, policy-continuity, parallel
+  observer, cancellation, and 80-cycle retention claims have focused tests;
 - frontend tests, TypeScript checks, build, and unaffected PHP tests run.
 
 ## Baseline gate

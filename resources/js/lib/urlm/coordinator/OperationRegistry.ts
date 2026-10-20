@@ -1,11 +1,13 @@
-import type { CancelCause, Concurrency, OperationState, RequestIdentity, UnresolvedOutcomePolicy } from '../core/contracts';
-import { identityKey, logicalIdentityKey, sameIdentity } from '../core/identity';
+import type { CancelCause, Concurrency, OperationState, RepeatSafety, RequestIdentity, UnresolvedOutcomePolicy } from '../core/contracts';
+import { identityKey, logicalIdentityKey, sameIdentity, sameLogicalOperation } from '../core/identity';
 
 type Listener = (state: OperationState<unknown>) => void;
 type SafeCallback = () => void;
 
 interface LogicalChannel {
     readonly key: string;
+    readonly policy: Concurrency;
+    readonly repeatSafety: RepeatSafety;
     readonly listeners: Set<Listener>;
     state?: OperationState<unknown>;
     terminalSnapshot?: OperationState<unknown>;
@@ -44,7 +46,8 @@ type ReleaseResourcesResult = 'logical_claim_retained' | 'logical_closed' | 'ter
 export type RegistryReplaceResult =
     | { kind: 'replaced'; record: RegisteredOperation }
     | { kind: 'blocked_by_claim'; identity: RequestIdentity }
-    | { kind: 'rejected' };
+    | { kind: 'claim_not_found' | 'channel_not_found' | 'policy_mismatch' | 'invalid_identity' |
+        'active_attempt_exists' | 'reconciliation_required' };
 
 const terminalStatuses = new Set([
     'succeeded', 'empty', 'validation_failed', 'auth_required', 'forbidden',
@@ -68,6 +71,7 @@ export class OperationRegistry {
         policy: Concurrency,
         identity: RequestIdentity,
         unresolvedOutcome: UnresolvedOutcomePolicy = 'block',
+        repeatSafety: RepeatSafety = 'safe',
     ): RegistryStartResult {
         const records = this.records.get(key) ?? [];
         const claims = this.claims.get(key) ?? [];
@@ -79,7 +83,7 @@ export class OperationRegistry {
             }
             if (policy === 'latest_wins') return { kind: 'blocked', identity: claim.identity };
             if (policy === 'queue') {
-                const record = this.createRecord(key, policy, identity, true);
+                const record = this.createRecord(key, policy, identity, true, repeatSafety);
                 records.push(record);
                 this.records.set(key, records);
                 return { kind: 'queued', record, position: records.filter((item) => item.queued).length };
@@ -92,7 +96,7 @@ export class OperationRegistry {
         if (policy === 'latest_wins') {
             for (const record of [...records]) this.cancelRecord(record, 'superseded');
         }
-        const record = this.createRecord(key, policy, identity, policy === 'queue' && records.length > 0);
+        const record = this.createRecord(key, policy, identity, policy === 'queue' && records.length > 0, repeatSafety);
         records.push(record);
         this.records.set(key, records);
         return record.queued
@@ -103,45 +107,97 @@ export class OperationRegistry {
     replace(key: string, identity: RequestIdentity, nextIdentity: RequestIdentity): RegistryReplaceResult {
         const records = this.records.get(key);
         const index = records?.findIndex((record) => sameIdentity(record.identity, identity)) ?? -1;
-        if (!records || index < 0) return { kind: 'rejected' };
+        if (!records || index < 0) return { kind: 'channel_not_found' };
         const previous = records[index];
         this.abortResources(previous);
-        const replacement = this.createRecord(key, previous.policy, nextIdentity, previous.queued);
+        const replacement = this.createRecord(key, previous.policy, nextIdentity, previous.queued, previous.channel.repeatSafety);
         replacement.channel = previous.channel;
         records[index] = replacement;
         return { kind: 'replaced', record: replacement };
     }
 
-    reacquire(
+    reacquireClaim(
         key: string,
-        policy: Concurrency,
         expectedOwner: RequestIdentity,
         nextIdentity: RequestIdentity,
+        policy: Concurrency,
+        repeatSafety: RepeatSafety,
     ): RegistryReplaceResult {
         const records = this.records.get(key) ?? [];
         const claims = this.claims.get(key) ?? [];
-        const claim = claims.find((candidate) =>
-            candidate.policy === 'parallel'
-                ? candidate.identity.operationId === expectedOwner.operationId
-                : true);
-        if (claim && !sameIdentity(claim.identity, expectedOwner)) {
-            return { kind: 'blocked_by_claim', identity: claim.identity };
+        if (records.some((record) =>
+            !record.queued && sameLogicalOperation(record.identity, expectedOwner))) {
+            return { kind: 'active_attempt_exists' };
+        }
+        const claim = claims.find((candidate) => sameIdentity(candidate.identity, expectedOwner));
+        if (!claim) {
+            const foreignClaim = claims.find((candidate) => candidate.policy !== 'parallel');
+            return foreignClaim
+                ? { kind: 'blocked_by_claim', identity: foreignClaim.identity }
+                : { kind: 'claim_not_found' };
+        }
+        if (claim.policy !== policy || claim.channel.policy !== policy ||
+            claim.channel.repeatSafety !== repeatSafety) return { kind: 'policy_mismatch' };
+        const foreignClaim = claims.find((candidate) =>
+            candidate.policy !== 'parallel' && !sameIdentity(candidate.identity, expectedOwner));
+        if (foreignClaim) {
+            return { kind: 'blocked_by_claim', identity: foreignClaim.identity };
         }
         if (expectedOwner.operationId !== nextIdentity.operationId ||
             expectedOwner.correlationId !== nextIdentity.correlationId ||
             expectedOwner.idempotencyKey !== nextIdentity.idempotencyKey ||
             expectedOwner.attemptId === nextIdentity.attemptId ||
             nextIdentity.generation <= expectedOwner.generation) {
-            return { kind: 'rejected' };
+            return { kind: 'invalid_identity' };
         }
-        if (policy !== 'parallel' &&
-            records.some((record) => !record.queued && !sameIdentity(record.identity, expectedOwner))) {
-            return { kind: 'rejected' };
+        const record = this.createRecord(key, policy, nextIdentity, false, repeatSafety);
+        record.channel = claim.channel;
+        this.removeClaim(key, claim);
+        if (policy === 'parallel') records.push(record);
+        else records.unshift(record);
+        this.records.set(key, records);
+        return { kind: 'replaced', record };
+    }
+
+    restartRetryableLifecycle(
+        key: string,
+        expectedOwner: RequestIdentity,
+        nextIdentity: RequestIdentity,
+        policy: Concurrency,
+        repeatSafety: RepeatSafety,
+    ): RegistryReplaceResult {
+        const claims = this.claims.get(key) ?? [];
+        const foreignClaim = claims.find((candidate) =>
+            candidate.policy !== 'parallel' && !sameLogicalOperation(candidate.identity, expectedOwner));
+        if (foreignClaim) return { kind: 'blocked_by_claim', identity: foreignClaim.identity };
+        const channel = this.channelFor(expectedOwner);
+        if (!channel) return { kind: 'channel_not_found' };
+        if (channel.policy !== policy || channel.repeatSafety !== repeatSafety) {
+            return { kind: 'policy_mismatch' };
         }
-        const record = this.createRecord(key, policy, nextIdentity, false);
-        record.channel = claim?.channel ?? this.channelFor(expectedOwner) ?? record.channel;
-        if (claim) this.removeClaim(key, claim);
-        records.unshift(record);
+        const state = channel.state;
+        const knownRetryable = state?.status === 'offline' ||
+            (state?.status === 'timed_out' && state.outcomeKnown) ||
+            (state?.status === 'failed' && state.retryable);
+        if (!state || !('id' in state) || !sameIdentity(state.id, expectedOwner)) {
+            return { kind: 'invalid_identity' };
+        }
+        if (!knownRetryable) return { kind: 'reconciliation_required' };
+        if (expectedOwner.operationId !== nextIdentity.operationId ||
+            expectedOwner.correlationId !== nextIdentity.correlationId ||
+            expectedOwner.idempotencyKey !== nextIdentity.idempotencyKey ||
+            expectedOwner.attemptId === nextIdentity.attemptId ||
+            nextIdentity.generation <= expectedOwner.generation) {
+            return { kind: 'invalid_identity' };
+        }
+        const records = this.records.get(key) ?? [];
+        if (records.some((record) => !record.queued && sameLogicalOperation(record.identity, expectedOwner))) {
+            return { kind: 'active_attempt_exists' };
+        }
+        const record = this.createRecord(key, policy, nextIdentity, false, repeatSafety);
+        record.channel = channel;
+        if (policy === 'parallel') records.push(record);
+        else records.unshift(record);
         this.records.set(key, records);
         return { kind: 'replaced', record };
     }
@@ -274,13 +330,21 @@ export class OperationRegistry {
     channelCount(): number { return this.channels.size; }
     terminalSnapshotCount(): number { return this.snapshots.size; }
 
-    private createRecord(key: string, policy: Concurrency, identity: RequestIdentity, queued: boolean): RegisteredOperation {
+    private createRecord(
+        key: string,
+        policy: Concurrency,
+        identity: RequestIdentity,
+        queued: boolean,
+        repeatSafety: RepeatSafety,
+    ): RegisteredOperation {
         const normalized: RequestIdentity = Object.freeze({
             ...identity,
             generation: Math.max(++this.generation, identity.generation),
         });
         const channelKey = logicalIdentityKey(normalized);
-        const channel = this.channels.get(channelKey) ?? { key: channelKey, listeners: new Set<Listener>() };
+        const channel = this.channels.get(channelKey) ?? {
+            key: channelKey, policy, repeatSafety, listeners: new Set<Listener>(),
+        };
         this.channels.set(channelKey, channel);
         return {
             key, policy, identity: normalized, controller: new AbortController(),

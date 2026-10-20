@@ -2,15 +2,16 @@
 
 ## Current phase
 
-**Phase 1 corrective pass implemented and frontend-verified; final acceptance
+**Phase 1 retry-authority corrective pass implemented and frontend-verified; final acceptance
 blocked by the PHP baseline environment.**
 
-Required base commit verified: `40201de1b5b45078c6b820e6cf71293b6f8a3aff`.
+Required base commit verified: `b58b4955221eae4c9f8be0a0d9a25df4c98dd1a9`.
 This document records a correction pass for review; it does not grant Phase 1
 acceptance.
 
 The initial Phase 1 implementation was not treated as fully accepted. This
-pass corrects registry authority, concurrency, retry, reducer, timer,
+pass corrects repeat-safety authority, registry claim paths, concurrency,
+retry, reducer, timer,
 cancellation, modal, queue promotion, joined observation, reconciliation,
 finalization, atomic retry replacement, diagnostics, and failure semantics.
 The core remains unused by all
@@ -75,8 +76,8 @@ Native WSL build baseline:
 - `npx tsc --noEmit`: **failed on an unrelated pre-existing error**:
   `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657:
   JSX expressions must have one parent element.`
-- `npm test -- --run`: **passed**, 3 test files and 38 tests.
-- Latest claim-reacquisition/cancellation pass: **passed**, 3 test files and 38 tests.
+- `npm test -- --run`: **passed**, 3 test files and 42 tests.
+- Latest retry-authority pass: **passed**, 3 test files and 42 tests.
 - Focused URLM TypeScript check with the repository baseline error excluded:
   **passed**.
 - `npm run typecheck:urlm`: **passed**.
@@ -121,6 +122,13 @@ Modified:
 - `docs/urlm/MIGRATION_MATRIX.md`
 - `docs/urlm/RISK_REGISTER.md`
 - `resources/js/lib/urlm/core/guards.ts`
+- `resources/js/lib/urlm/core/contracts.ts`
+- `resources/js/lib/urlm/core/identity.ts`
+- `resources/js/lib/urlm/core/profiles.ts`
+- `resources/js/lib/urlm/core/reducer.ts`
+- `resources/js/lib/urlm/coordinator/OperationCoordinator.ts`
+- `resources/js/lib/urlm/coordinator/OperationRegistry.ts`
+- `resources/js/lib/urlm/coordinator/coordinators.test.ts`
 - `resources/js/lib/urlm/coordinator/TimerRegistry.ts`
 
 `package-lock.json` already contained `vitest@4.1.0` from the reviewed
@@ -191,6 +199,13 @@ caused by URLM production changes.
   occurs exactly once after terminal classification or closure.
 - [x] Retry reacquisition requires exact logical claim ownership and rejects
   foreign claims without consuming retry budget.
+- [x] Known retryable terminal states restart through a retained logical
+  channel; missing channels do not fabricate authority.
+- [x] Unknown outcomes are governed by explicit repeat safety: safe reads may
+  repeat, idempotent repeats require a stable key, and authentication or
+  non-idempotent mutation repeats return `reconciliation_required`.
+- [x] Claim policy, lifecycle policy, and repeat-safety policy must remain
+  consistent during replacement.
 - [x] Cancellation returns explicit results; unknown-outcome lifecycles are
   `not_cancellable` rather than silently ignored.
 - [x] Reacquisition receives an exact expected owner separately from the next
@@ -199,6 +214,11 @@ caused by URLM production changes.
   promotion until terminal classification or closure.
 - [x] Parallel unresolved claims remain independently addressable and do not
   overwrite one another.
+- [x] Parallel observers remain isolated, reverse completion preserves the
+  other lifecycle, and a second active attempt for one logical operation is
+  rejected.
+- [x] Eighty parallel claim/retry/terminal/release cycles return records and
+  claims to zero while bounded retention remains within limits.
 - [x] No runtime consumer was migrated during Phase 1.
 - [x] Existing application behavior remains unchanged by URLM.
 - [x] URLM tests, focused URLM typecheck, and production build pass; repository
@@ -229,7 +249,8 @@ caused by URLM production changes.
 - `npm ci` reported 26 dependency audit findings (7 moderate, 17 high, 2
   critical); no automated audit remediation was attempted because it would be
   outside Phase 1 scope.
-- The current focused tests cover the principal authority, publication,
-  cancellation, retry, queue, finalization, and secret-safety invariants, but
+- The current focused tests cover the principal authority, repeat-safety,
+  publication, cancellation, retry, queue, finalization, parallel-isolation,
+  and secret-safety invariants, but
   Phase 1 remains pending explicit review and the blocked PHP baseline.
 - Phase 2 must not begin until this review is complete.

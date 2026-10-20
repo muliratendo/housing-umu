@@ -1,7 +1,7 @@
 import type { OperationEvent } from '../core/events';
 import { createIdentity, identityKey, retryIdentity, sameIdentity } from '../core/identity';
 import type { OperationState, RequestProfile, RequestIdentity, RetryOrigin } from '../core/contracts';
-import { isRetryEligible, isTerminal } from '../core/guards';
+import { canRepeatOriginalRequest, isOutcomeUncertain, isRetryEligible, isTerminal, requiresReconciliation } from '../core/guards';
 import { reduceOperationResult } from '../core/reducer';
 import { applicationOperationRegistry, OperationRegistry, type RegisteredOperation } from './OperationRegistry';
 import { TimerRegistry } from './TimerRegistry';
@@ -31,6 +31,8 @@ export type StartResult<T> =
 export type RetryResult =
     | { kind: 'started'; identity: RequestIdentity }
     | { kind: 'blocked_by_claim'; identity: RequestIdentity }
+    | { kind: 'claim_not_found' | 'channel_not_found' | 'policy_mismatch' | 'invalid_identity' |
+        'active_attempt_exists' | 'reconciliation_required' }
     | { kind: 'policy' | 'ineligible' | 'disposed' | 'not_active' | 'budget_exhausted' };
 
 export type CancelResult =
@@ -70,6 +72,7 @@ export class OperationCoordinator<T> {
             this.profile.concurrency,
             identity,
             this.profile.unresolvedOutcome ?? 'block',
+            this.profile.repeatSafety,
         );
         if (result.kind === 'joined') return this.joined(result.record);
         if (result.kind === 'joined_logical') return this.joined(result.identity);
@@ -94,21 +97,40 @@ export class OperationCoordinator<T> {
 
     retry(origin: RetryOrigin = 'user'): RetryResult {
         if (this.disposed || !this.identity) return { kind: this.disposed ? 'disposed' : 'not_active' };
-        if (!isRetryEligible(this.state)) return { kind: 'ineligible' };
+        if (!isRetryEligible(this.state) && !isOutcomeUncertain(this.state)) return { kind: 'ineligible' };
+        const uncertain = isOutcomeUncertain(this.state);
+        if (uncertain && (requiresReconciliation(this.profile, this.state) ||
+            !canRepeatOriginalRequest(this.profile, this.identity, this.state, origin))) {
+            return { kind: 'reconciliation_required' };
+        }
+        if (!uncertain && !canRepeatOriginalRequest(this.profile, this.identity, this.state, origin)) {
+            return { kind: 'policy' };
+        }
         if (this.profile.retry === 'never' ||
             (this.profile.retry === 'user_only' && origin === 'automatic') ||
-            (this.profile.retry === 'idempotent_only' && !this.identity.idempotencyKey) ||
-            (this.profile.retry === 'safe_transient' && origin === 'automatic' && !this.isTransientState())) return { kind: 'policy' };
+            (this.profile.retry === 'idempotent_only' && !this.identity.idempotencyKey)) return { kind: 'policy' };
         if (this.retryAttempts >= (this.profile.retryBudget ?? 3)) return { kind: 'budget_exhausted' };
         const previous = this.identity;
         const next = retryIdentity(previous, previous.generation + 1);
-        const replacement = this.registry.getByIdentity(previous)
-            ? this.registry.replace(this.key, previous, next)
-            : this.registry.reacquire(this.key, this.profile.concurrency, previous, next);
+        const replacement = isOutcomeUncertain(this.state)
+            ? this.registry.reacquireClaim(
+                this.key,
+                previous,
+                next,
+                this.profile.concurrency,
+                this.profile.repeatSafety,
+            )
+            : this.registry.restartRetryableLifecycle(
+                this.key,
+                previous,
+                next,
+                this.profile.concurrency,
+                this.profile.repeatSafety,
+            );
         if (replacement.kind === 'blocked_by_claim') {
             return { kind: 'blocked_by_claim', identity: replacement.identity };
         }
-        if (replacement.kind === 'rejected') return { kind: 'policy' };
+        if (replacement.kind !== 'replaced') return replacement;
         this.timers.clear(previous);
         this.identity = replacement.record.identity;
         this.retryAttempts += 1;
@@ -231,8 +253,4 @@ export class OperationCoordinator<T> {
         return this.registry.observe(identity, listener as (state: OperationState<unknown>) => void);
     }
 
-    private isTransientState(): boolean {
-        return this.state.status === 'offline' || this.state.status === 'timed_out' ||
-            (this.state.status === 'failed' && this.state.retryable);
-    }
 }

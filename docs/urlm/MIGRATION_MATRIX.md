@@ -57,3 +57,7 @@ owner and never deletes a claim by conflict key alone. Live cancellation and
 local abandonment are separate outcomes.
 Parallel policy stores unresolved claims by logical identity, so retry or
 closure of one parallel lifecycle cannot release another lifecycle's claim.
+Profiles also declare repeat safety. Known retryable failures may restart from
+the retained channel; uncertain outcomes require `safe` repetition or a stable
+idempotency key, otherwise the adapter must reconcile instead of resubmitting.
+Authentication remains non-repeatable after an unknown outcome.

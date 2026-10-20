@@ -72,6 +72,37 @@ describe('URLM coordination', () => {
         expect(second.getState().status).toBe('succeeded');
     });
 
+    it('isolates parallel observers and reverse completion cleanup', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'parallel' as const };
+        const first = new OperationCoordinator('parallel-observed', profile, registry);
+        const second = new OperationCoordinator('parallel-observed', profile, registry);
+        const firstStates: string[] = [];
+        const secondStates: string[] = [];
+        const firstId = startedIdentity(first.start());
+        const secondId = startedIdentity(second.start());
+        registry.observe(firstId, (state) => firstStates.push(state.status));
+        registry.observe(secondId, (state) => secondStates.push(state.status));
+        first.dispatch({ type: 'CLIENT_VALID', identity: firstId });
+        second.dispatch({ type: 'CLIENT_VALID', identity: secondId });
+        first.finalize(firstId);
+        second.finalize(secondId);
+        expect(registry.claimCount()).toBe(2);
+        const firstRetry = first.retry('user');
+        const secondRetry = second.retry('user');
+        expect(firstRetry.kind).toBe('started');
+        expect(secondRetry.kind).toBe('started');
+        if (firstRetry.kind !== 'started' || secondRetry.kind !== 'started') return;
+        second.dispatch({ type: 'SUCCESS', identity: secondRetry.identity });
+        expect(firstStates).toEqual(['validating', 'submitting', 'awaiting_outcome', 'submitting']);
+        expect(secondStates).toEqual(['validating', 'submitting', 'awaiting_outcome', 'submitting', 'succeeded']);
+        expect(registry.claimCount()).toBe(0);
+        expect(registry.getState(firstRetry.identity)?.status).toBe('submitting');
+        first.dispatch({ type: 'SUCCESS', identity: firstRetry.identity });
+        expect(registry.claimCount()).toBe(0);
+        expect(registry.activeRecordCount()).toBe(0);
+    });
+
     it('releases terminal single-flight slots and coordinates separate coordinators', () => {
         const registry = new OperationRegistry();
         const one = new OperationCoordinator('auth', profiles.authentication, registry);
@@ -162,6 +193,118 @@ describe('URLM coordination', () => {
         userOnly.dispatch({ type: 'NETWORK_LOST', identity: userId });
         expect(userOnly.retry('automatic').kind).toBe('policy');
         expect(userOnly.retry('user').kind).toBe('started');
+    });
+
+    it('applies repeat safety to uncertain outcomes for reads and mutations', () => {
+        const read = new OperationCoordinator('uncertain-read', { ...profiles.read, retry: 'safe_transient' });
+        const readId = startedIdentity(read.start());
+        read.dispatch({ type: 'CLIENT_VALID', identity: readId });
+        read.finalize(readId);
+        expect(read.retry('automatic').kind).toBe('started');
+
+        const mutation = {
+            ...profiles.read,
+            kind: 'mutation' as const,
+            concurrency: 'single_flight' as const,
+            repeatSafety: 'requires_idempotency' as const,
+            retry: 'idempotent_only' as const,
+        };
+        const unkeyed = new OperationCoordinator('uncertain-mutation', mutation);
+        const unkeyedId = startedIdentity(unkeyed.start());
+        unkeyed.dispatch({ type: 'CLIENT_VALID', identity: unkeyedId });
+        unkeyed.finalize(unkeyedId);
+        expect(unkeyed.retry('user')).toEqual({ kind: 'reconciliation_required' });
+
+        const keyed = new OperationCoordinator('uncertain-mutation-keyed', mutation);
+        const keyedId = startedIdentity(keyed.start('stable'));
+        keyed.dispatch({ type: 'CLIENT_VALID', identity: keyedId });
+        keyed.finalize(keyedId);
+        const retry = keyed.retry('automatic');
+        expect(retry.kind).toBe('started');
+        if (retry.kind === 'started') expect(retry.identity.idempotencyKey).toBe('stable');
+
+        const authentication = new OperationCoordinator('uncertain-auth', profiles.authentication);
+        const authId = startedIdentity(authentication.start());
+        authentication.dispatch({ type: 'CLIENT_VALID', identity: authId });
+        authentication.finalize(authId);
+        expect(authentication.retry('user')).toEqual({ kind: 'reconciliation_required' });
+    });
+
+    it('restarts known retryable terminal state only through its retained channel', () => {
+        const registry = new OperationRegistry();
+        const coordinator = new OperationCoordinator('known-terminal', profiles.read, registry);
+        const identity = startedIdentity(coordinator.start('stable'));
+        coordinator.dispatch({ type: 'NETWORK_LOST', identity });
+        const retry = coordinator.retry('user');
+        expect(retry.kind).toBe('started');
+        if (retry.kind === 'started') {
+            expect(retry.identity.operationId).toBe(identity.operationId);
+            expect(retry.identity.attemptId).not.toBe(identity.attemptId);
+            expect(retry.identity.generation).toBeGreaterThan(identity.generation);
+        }
+    });
+
+    it('rejects a duplicate active attempt for one logical parallel operation', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'parallel' as const };
+        const coordinator = new OperationCoordinator('parallel-active', profile, registry);
+        const identity = startedIdentity(coordinator.start());
+        coordinator.dispatch({ type: 'CLIENT_VALID', identity });
+        coordinator.dispatch({ type: 'TIMEOUT_UNKNOWN', identity });
+        expect(coordinator.retry('user')).toEqual({ kind: 'active_attempt_exists' });
+    });
+
+    it('keeps claim and channel state unchanged for policy mismatch and missing authority', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'single_flight' as const };
+        const owner = new OperationCoordinator('authority', profile, registry);
+        const identity = startedIdentity(owner.start());
+        owner.finalize(identity);
+        const next = { ...identity, attemptId: `${identity.attemptId}-next`, generation: identity.generation + 1 };
+        expect(registry.reacquireClaim('authority', identity, next, 'parallel', 'safe')).toEqual({
+            kind: 'policy_mismatch',
+        });
+        const firstReplacement = registry.reacquireClaim('authority', identity, next, 'single_flight', 'safe');
+        expect(firstReplacement).toEqual({
+            kind: 'replaced',
+            record: expect.any(Object),
+        });
+        if (firstReplacement.kind === 'replaced') {
+            registry.release(firstReplacement.record.identity);
+            registry.closeLogical(firstReplacement.record.identity);
+        }
+        const replacement = registry.reacquireClaim('authority', identity, {
+            ...next,
+            attemptId: `${next.attemptId}-again`,
+            generation: next.generation + 1,
+        }, 'single_flight', 'safe');
+        expect(replacement).toEqual({ kind: 'claim_not_found' });
+        expect(registry.reacquireClaim('authority', identity, {
+            ...next,
+            attemptId: `${next.attemptId}-final`,
+            generation: next.generation + 2,
+        }, 'single_flight', 'safe')).toEqual({ kind: 'claim_not_found' });
+    });
+
+    it('bounds claims and channels across repeated parallel uncertain lifecycles', () => {
+        const registry = new OperationRegistry();
+        const profile = { ...profiles.read, concurrency: 'parallel' as const };
+        for (let index = 0; index < 80; index += 1) {
+            const one = new OperationCoordinator(`parallel-cycle-${index}`, profile, registry);
+            const two = new OperationCoordinator(`parallel-cycle-${index}`, profile, registry);
+            const oneId = startedIdentity(one.start());
+            const twoId = startedIdentity(two.start());
+            one.finalize(oneId);
+            two.finalize(twoId);
+            expect(one.retry('user').kind).toBe('started');
+            expect(two.retry('user').kind).toBe('started');
+            if (one.getIdentity()) one.dispatch({ type: 'SUCCESS', identity: one.getIdentity()! });
+            if (two.getIdentity()) two.dispatch({ type: 'SUCCESS', identity: two.getIdentity()! });
+        }
+        expect(registry.activeRecordCount()).toBe(0);
+        expect(registry.claimCount()).toBe(0);
+        expect(registry.channelCount()).toBeLessThanOrEqual(64);
+        expect(registry.terminalSnapshotCount()).toBeLessThanOrEqual(64);
     });
 
     it('invokes cancellation handlers at most once', () => {

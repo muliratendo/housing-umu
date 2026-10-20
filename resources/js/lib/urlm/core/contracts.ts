@@ -14,6 +14,7 @@ export type OperationScope = 'field' | 'control' | 'section' | 'page' | 'applica
 export type Criticality = 'advisory' | 'important' | 'blocking';
 export type Concurrency = 'latest_wins' | 'single_flight' | 'parallel' | 'queue';
 export type RetryPolicy = 'never' | 'safe_transient' | 'idempotent_only' | 'user_only';
+export type RepeatSafety = 'safe' | 'requires_idempotency' | 'reconcile_only' | 'never';
 export type UnresolvedOutcomePolicy = 'join' | 'block';
 
 export interface RequestIdentity {
@@ -31,6 +32,7 @@ export interface RequestProfile {
     criticality: Criticality;
     concurrency: Concurrency;
     retry: RetryPolicy;
+    repeatSafety: RepeatSafety;
     timeoutMs: number;
     staleData: 'forbid' | 'allow_marked' | 'allow_silent_refresh';
     retryBudget?: number;
@@ -89,5 +91,5 @@ export const TERMINAL_STATUSES = [
 ] as const;
 
 export type RetryEligibleState<T> =
-    | Extract<OperationState<T>, { status: 'offline' | 'timed_out' | 'awaiting_outcome' | 'reconciling' }>
+    | Extract<OperationState<T>, { status: 'offline' | 'timed_out' }>
     | Extract<OperationState<T>, { status: 'failed'; retryable: true }>;

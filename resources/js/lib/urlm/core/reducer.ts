@@ -1,6 +1,7 @@
 import type { Diagnostic, OperationEvent } from './events';
-import { acceptsIdentity, isRetryEligible, isTerminal } from './guards';
+import { acceptsIdentity, isOutcomeUncertain, isRetryEligible, isTerminal } from './guards';
 import type { OperationState, RequestIdentity } from './contracts';
+import { sameLogicalOperation } from './identity';
 
 export type ReductionKind = 'accepted' | 'accepted_noop' | 'rejected_invalid' | 'rejected_stale';
 export interface ReductionResult<T> {
@@ -35,13 +36,6 @@ const emit = <T>(
     }
 };
 
-const sameLogicalOperation = (current: RequestIdentity, next: RequestIdentity): boolean =>
-    current.operationId === next.operationId &&
-    current.correlationId === next.correlationId &&
-    current.idempotencyKey === next.idempotencyKey &&
-    next.generation > current.generation &&
-    next.attemptId !== current.attemptId;
-
 const canReceiveOutcome = (state: OperationState<unknown>): boolean =>
     ['submitting', 'progressing', 'accepted', 'tracking', 'refreshing', 'reconciling', 'awaiting_outcome'].includes(state.status);
 
@@ -60,7 +54,10 @@ export function reduceOperation<T>(
     }
 
     if (event.type === 'RETRY') {
-        if (!('id' in state) || !isRetryEligible(state) || !sameLogicalOperation(state.id, event.identity)) {
+        if (!('id' in state) || (!isRetryEligible(state) && !isOutcomeUncertain(state)) ||
+            !sameLogicalOperation(state.id, event.identity) ||
+            state.id.attemptId === event.identity.attemptId ||
+            event.identity.generation <= state.id.generation) {
             emit('INVALID_TRANSITION', event, state, onDiagnostic);
             return unchanged(state);
         }

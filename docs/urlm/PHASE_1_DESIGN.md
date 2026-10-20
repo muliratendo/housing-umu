@@ -29,7 +29,10 @@ observation channel after the transport lease is released.
 
 Only an event matching the canonical exact identity is accepted:
 `operationId`, `attemptId`, `correlationId`, `generation`, and
-`idempotencyKey` (including its absent/present distinction). The same
+`idempotencyKey` (including its absent/present distinction). The separate
+`sameLogicalOperation` comparator uses operation ID, correlation ID, and
+stable idempotency identity only; it deliberately excludes attempt ID and
+generation. The same
 comparator is used by reducer acceptance, registry lookup/release/cancellation/
 replacement/publication, observers, promotion, supersession, finalization, and
 watchdog authority checks. A retry is legal only from an eligible outcome and
@@ -39,6 +42,23 @@ ignored by the coordinator. Single-flight joins expose owner state through
 unsubscribeable listeners without transferring transport ownership. Retry
 replacement verifies the exact owner and swaps the record atomically, so a
 failed replacement cannot release or promote the old authority.
+
+`RequestProfile.repeatSafety` separates known-failure retry from uncertain
+outcome handling: `safe` permits an allowed repeat, `requires_idempotency`
+requires the stable key, `reconcile_only` requires status reconciliation, and
+`never` rejects retransmission. `awaiting_outcome`, `reconciling`, and unknown
+timeouts are not generic retry failures. User and automatic retry use the same
+side-effect safety gate; only retry-origin scheduling policy may differ.
+Authentication is `never`.
+
+Known retryable terminal states restart through the retained logical channel
+without requiring an unresolved claim. Unknown outcomes use
+`reacquireClaim`, which requires the exact retained claim and never fabricates a
+channel. Claim reacquisition validates channel/profile policy continuity,
+logical identity, a changed attempt ID, and strictly increasing generation.
+Rejected reacquisition leaves the claim, channel, observers, queue, and retry
+budget unchanged. A non-idempotent uncertain mutation returns
+`reconciliation_required` rather than resubmitting the original operation.
 
 ## Concurrency and cancellation
 
@@ -53,7 +73,9 @@ release. Single-flight callers join that claim, queue callers remain behind it,
 and latest-wins callers receive a typed blocked result by default because an
 unknown side effect must not be silently superseded. Parallel work remains
 parallel, with separate claims indexed by logical identity so parallel
-lifecycles cannot overwrite one another. One coordinator owns one unresolved
+lifecycle; parallel work requires separate coordinators. Parallel policy also
+rejects a second active attempt for the same logical operation while allowing
+different operation IDs to proceed. One coordinator owns one unresolved
 lifecycle; parallel work requires separate coordinators. Terminal error UI does
 not keep a lease occupied indefinitely.
 Queue positions are one-based snapshots among waiting records; the unresolved

@@ -39,3 +39,8 @@ export const logicalIdentityKey = (identity: RequestIdentity): string =>
 
 export const sameIdentity = (a: RequestIdentity, b: RequestIdentity): boolean =>
     identityKey(a) === identityKey(b);
+
+export const sameLogicalOperation = (a: RequestIdentity, b: RequestIdentity): boolean =>
+    a.operationId === b.operationId &&
+    a.correlationId === b.correlationId &&
+    a.idempotencyKey === b.idempotencyKey;
