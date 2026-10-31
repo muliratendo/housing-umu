@@ -254,3 +254,125 @@ caused by URLM production changes.
   and secret-safety invariants, but
   Phase 1 remains pending explicit review and the blocked PHP baseline.
 - Phase 2 must not begin until this review is complete.
+
+## Complete Acceptance Matrix — Commit 5a0c8cd
+
+**Review date:** 2026-10-20
+**Reviewed commit:** `5a0c8cd4f68587d8d058426118437a93cceeb084`
+**Parent:** `bbdb1cd827d75941657f4ee3d3a3374729b102bd`
+
+The required commit was verified before this rerun. Pre-existing worktree
+changes were preserved: modified `artisan`; twelve deleted
+`public/images/hostels/hostel-*.jpg:Zone.Identifier` files; and twelve
+untracked `public/images/hostels/hostel-*.jpg:Zone.Identifier` files.
+
+### Framework-neutral command matrix
+
+| Command | Exit code | Result | Exact summary |
+|---|---:|---|---|
+| `npm test -- --run` | 0 | PASS | 3 files passed; 46 tests passed; 0 failed, 0 skipped, 0 todo; duration 2.99s |
+| `npm run typecheck:urlm` | 0 | PASS | `tsc -p tsconfig.urlm.json --noEmit` completed successfully |
+| `npm run build` | 0 | PASS | Vite production build completed successfully |
+| `git diff --check` | 0 | PASS | No whitespace errors |
+
+The URLM tests passed were:
+
+- `resources/js/lib/urlm/classification/failureDescriptor.test.ts` — 2 tests
+- `resources/js/lib/urlm/core/reducer.test.ts` — 6 tests
+- `resources/js/lib/urlm/coordinator/coordinators.test.ts` — 38 tests
+
+### Framework-neutral evidence matrix
+
+The matrix below counts only invariants for which implementation behavior and
+an effective test assertion together provide evidence. Documentation claims
+are not treated as proof.
+
+| Invariant group | Evidence result | Effective implementation/test evidence | Reason or limitation |
+|---|---|---|---|
+| Exact identity comparison includes operation, attempt, correlation, generation, and idempotency presence/value | PASS | `core/identity.ts`; reducer stale-event tests; coordinator identity tests | `identityKey` uses `null` for absent idempotency keys |
+| Logical identity excludes attempt and generation | PASS | `core/identity.ts`; retry and claim tests | `logicalIdentityKey` retains operation, correlation, and idempotency only |
+| Stale and foreign events cannot mutate or publish state | PASS | `core/reducer.ts`; stale-event and foreign-publication tests | — |
+| Invalid transitions and terminal outcomes preserve state | PASS | `core/reducer.ts`; reducer transition tests | — |
+| Finalization does not invent an outcome; reconciliation has explicit outcomes | PASS | coordinator finalization tests; reducer reconciliation tests | — |
+| One coordinator owns at most one unresolved logical lifecycle | PASS | `OperationCoordinator.start`; owner and disposal tests | — |
+| One logical operation cannot own two active attempts | PASS | registry active-attempt guard; duplicate-attempt test | — |
+| Joined callers and observers remain continuous through retry/classification | PASS | joined observer and classification tests | — |
+| Unsubscribe and callback isolation work | PASS | observer cleanup and callback-failure tests | — |
+| Queue promotion is observable exactly once and remains FIFO across owner retry | PASS | queue promotion tests; two-follower reacquisition test | The two-follower test verifies ordered state promotion |
+| Failed replacement is atomic across stale identity, invalid generation, policy mismatch, owner, observers, and two followers | NOT DEMONSTRATED | Partial registry policy/missing-authority coverage | The complete required two-follower stale/invalid-generation/policy matrix is absent |
+| Single-flight, latest-wins unknown-side-effect blocking, and parallel isolation | PASS | registry/coordinator concurrency tests | — |
+| Known retryable failures differ from unknown outcomes | PASS | `core/guards.ts`; retry and finalization tests | — |
+| Safe reads, keyed idempotent retries, and repeat-safety policy enforcement | PASS | retry-policy and repeat-safety tests | No transport adapter is present |
+| Non-idempotent uncertain mutations require reconciliation | PASS | uncertain mutation test | A client key is not server idempotency enforcement |
+| Authentication, user-origin, and automatic retry policy cannot bypass repeat safety | PASS | authentication and retry-origin tests | This does not prove credential transmission behavior |
+| Rejected retries do not consume retry budget | NOT DEMONSTRATED | One blocked-budget regression test | Repeated blocked and invalid replacement attempts are not fully asserted |
+| Retry preserves logical identifiers and changes attempt/generation | PASS | identity retry tests | — |
+| Finite retry-budget exhaustion returns `budget_exhausted` without mutation | NOT DEMONSTRATED | No exhaustion test exists | No test proves unchanged channel, observers, claims, queue, and identity at exhaustion |
+| Timer ownership, cancellation exactly-once behavior, and cleanup callback isolation | PASS | timer, cancellation, and callback-failure tests | — |
+| Terminal records/claims release and bounded retention | PASS | registry release and retention tests | Retention is bounded at 64 terminal snapshots/channels |
+| Failure descriptors normalize malformed input without leaking secrets or raw data | PASS | `classification/failureDescriptor.test.ts` | No transport boundary is implemented |
+
+**Evidence totals:** PASS 36; FAIL 0; NOT DEMONSTRATED 3.
+
+Evidence limitations are intentional for Phase 1. The URLM core does not prove
+actual authentication credential transmission, Laravel/Inertia adapter
+behavior, server-side idempotency enforcement, database-backed duplicate
+mutation protection, production transport cancellation, or end-to-end
+reconciliation. Those require later integration phases.
+
+### Decision A — Phase 1 core
+
+**NOT ACCEPTED — EVIDENCE INCOMPLETE**
+
+The implemented URLM core has no demonstrated failing invariant in this
+matrix, but the three missing acceptance tests above prevent an `ACCEPTED`
+decision under the required rule that every framework-neutral invariant must
+pass.
+
+### Repository-wide verification matrix
+
+| Command | Exit code | Result | Exact summary |
+|---|---:|---|---|
+| `npm run typecheck` | 2 | BLOCKED | `resources/js/components/Profile/FooterLinks.patch.tsx(15,1): error TS2657: JSX expressions must have one parent element.` |
+| `php artisan route:list --except-vendor --json > /tmp/housing-umu-routes.json` | 0 | PASS | Route listing generated successfully |
+| `python3 -c 'import json; ...'` | 0 | PASS | `route_count=129` |
+| `php artisan test` | 2 | BLOCKED | MySQL DNS/database initialization failure for host `mysql` |
+
+The exact PHP blocker was:
+
+```text
+SQLSTATE[HY000] [2002] php_network_getaddresses: getaddrinfo for mysql:
+Temporary failure in name resolution
+(Connection: mysql, Host: mysql, Port: 3306, Database: testing)
+```
+
+The runtime URLM import search, excluding URLM source/tests and documentation,
+returned no application-page, layout, hook, Laravel, or existing-request
+utility imports. Configuration references such as `tsconfig.urlm.json`,
+`vitest.config.ts`, and `package.json` are not runtime consumers.
+
+### Decision B — Repository-wide verification
+
+**BLOCKED**
+
+Repository-wide verification cannot be marked passed while the unrelated
+`FooterLinks.patch.tsx` TypeScript error and the MySQL `mysql` DNS/database
+initialization failure remain unresolved.
+
+### Decision C — Phase 2 production readiness
+
+**PENDING — NOT AUTHORIZED**
+
+Phase 2 remains pending until an Inertia adapter, Laravel request lifecycle
+integration, server-side idempotency persistence/enforcement, end-to-end
+authentication behavior, transport cancellation and stale-response handling,
+and integration tests covering Laravel decisions and final React state exist.
+
+### Scope confirmation
+
+- No Phase 2 implementation was started.
+- No runtime consumer was migrated.
+- No Laravel behavior changed.
+- No dependency was installed.
+- No unrelated file was modified.
+- No commit or push was performed.
