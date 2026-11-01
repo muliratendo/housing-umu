@@ -22,8 +22,8 @@
  *   genuinely finished.
  * =============================================================================
  */
-import { FormEventHandler, useEffect, useState } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { FormEventHandler, useEffect, useMemo, useState } from 'react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Button } from '@/components/ui/button';
@@ -38,15 +38,24 @@ import { SuccessState } from '@/components/states/SuccessState';
 import { classifyError } from '@/lib/classifyError';
 import { useFormGuard } from '@/hooks/useFormGuard';
 import { useSilentFailureGuard } from '@/components/states/StaleFailureGuard';
+import { createLoginAdapter, type LoginAdapter } from '@/lib/urlm/adapters/loginAdapter';
+import type { OperationRegistry } from '@/lib/urlm/coordinator/OperationRegistry';
 
 interface Props {
   status?: string;
   canResetPassword?: boolean;
+  integration?: 'legacy' | 'urlm';
+  adapterRegistry?: OperationRegistry;
 }
 
 type LoginField = 'email' | 'password';
 
-export default function Login({ status, canResetPassword = false }: Props) {
+export default function Login({
+  status,
+  canResetPassword = false,
+  integration = 'legacy',
+  adapterRegistry,
+}: Props) {
   const { data, setData, post, processing, errors, clearErrors, reset } = useForm({
     email: '',
     password: '',
@@ -69,6 +78,12 @@ export default function Login({ status, canResetPassword = false }: Props) {
 
   const [submitted, setSubmitted] = useState(false);
   const validationError = classifyError({ status: 422 });
+  const loginAdapter = useMemo<LoginAdapter>(
+    () => createLoginAdapter((url, options) => router.visit(url, options), adapterRegistry),
+    [adapterRegistry],
+  );
+  const [adapterState, setAdapterState] = useState(() => loginAdapter.getState());
+  const isUrlmIntegration = integration === 'urlm';
 
   // FIX: a throttle/lockout message must survive keystrokes — Laravel is the
   // sole authority on whether the wait has actually expired. We detect it by
@@ -78,8 +93,23 @@ export default function Login({ status, canResetPassword = false }: Props) {
   const isThrottleMessage = (message?: string) =>
     Boolean(message) && /wait|attempt|seconds|minute/i.test(message as string);
 
-  const hasCredentialError = submitted && Boolean(errors.email || errors.password);
   const isThrottled = isThrottleMessage(errors.email);
+
+  useEffect(() => {
+    const unsubscribe = loginAdapter.subscribe(setAdapterState);
+    return () => {
+      unsubscribe();
+      loginAdapter.detachView();
+    };
+  }, [loginAdapter]);
+
+  useEffect(() => {
+    if (isUrlmIntegration &&
+      ['validation_failed', 'succeeded', 'auth_required', 'awaiting_outcome', 'abandoned']
+        .includes(adapterState?.status ?? '')) {
+      reset('password');
+    }
+  }, [adapterState?.status, isUrlmIntegration, reset]);
 
   useEffect(() => {
     return () => {
@@ -112,7 +142,11 @@ export default function Login({ status, canResetPassword = false }: Props) {
     event.preventDefault();
     setSubmitted(true);
 
-    if (guard.isValid) {
+    if (!guard.isValid) return;
+
+    if (isUrlmIntegration) {
+      loginAdapter.start(data.email, data.password, data.remember);
+    } else {
       silentFailure.run();
     }
   };
@@ -127,12 +161,28 @@ export default function Login({ status, canResetPassword = false }: Props) {
     guard.setValue(field, value);
     setData(field, value);
 
-    if (errors[field] && !(field === 'email' && isThrottleMessage(errors.email))) {
+    if (!isUrlmIntegration && errors[field] &&
+      !(field === 'email' && isThrottleMessage(errors.email))) {
       clearErrors(field);
     }
   };
 
-  const isBusy = processing || silentFailure.isRunning;
+  const urlmFieldErrors = adapterState?.status === 'validation_failed'
+    ? adapterState.fieldErrors
+    : {};
+  const fieldErrors = isUrlmIntegration ? urlmFieldErrors : errors;
+  const hasCredentialError = submitted && Boolean(fieldErrors.email || fieldErrors.password);
+  const urlmPending = isUrlmIntegration &&
+    (adapterState?.status === 'validating' || adapterState?.status === 'submitting');
+  const urlmUnknown = isUrlmIntegration &&
+    (adapterState?.status === 'awaiting_outcome' || adapterState?.status === 'reconciling');
+  const isBusy = isUrlmIntegration ? urlmPending : processing || silentFailure.isRunning;
+  const emailServerError = Array.isArray(fieldErrors.email)
+    ? fieldErrors.email[0]
+    : fieldErrors.email;
+  const passwordServerError = Array.isArray(fieldErrors.password)
+    ? fieldErrors.password[0]
+    : fieldErrors.password;
 
   return (
     <GuestLayout>
@@ -161,17 +211,38 @@ export default function Login({ status, canResetPassword = false }: Props) {
           <ErrorState
             component="auth.login.credentials"
             userFlow="guest"
-            reasonCode={isThrottled ? 'RATE_LIMITED' : validationError.reasonCode}
+            reasonCode={!isUrlmIntegration && isThrottled ? 'RATE_LIMITED' : validationError.reasonCode}
             userMessage={
-              isThrottled
+              !isUrlmIntegration && isThrottled
                 ? (errors.email as string)
                 : 'We could not sign you in with those details. Check your email and password, then try again.'
             }
-            placement={isThrottled ? 'toast' : validationError.placement}
+            placement={!isUrlmIntegration && isThrottled ? 'toast' : validationError.placement}
           />
         )}
 
-        {silentFailure.suspectedSilentFailure && (
+        {isUrlmIntegration && urlmUnknown && (
+          <ErrorState
+            component="auth.login.recovery"
+            userFlow="guest"
+            reasonCode="OUTCOME_REQUIRED"
+            userMessage="We could not confirm the sign-in result. Refresh the sign-in page before trying again."
+            placement="inline"
+            primaryAction={{ label: 'Refresh sign-in page', href: route('login') }}
+          />
+        )}
+
+        {isUrlmIntegration && adapterState?.status === 'auth_required' && (
+          <ErrorState
+            component="auth.login.verification"
+            userFlow="guest"
+            reasonCode="AUTH_REQUIRED"
+            userMessage="Your account requires verification before you can continue. Follow the server-provided verification flow."
+            placement="inline"
+          />
+        )}
+
+        {!isUrlmIntegration && silentFailure.suspectedSilentFailure && (
           <ErrorState
             component="auth.login.submit"
             userFlow="guest"
@@ -186,7 +257,13 @@ export default function Login({ status, canResetPassword = false }: Props) {
           />
         )}
 
-        <form onSubmit={submit} className="space-y-4" noValidate>
+        <form
+          onSubmit={submit}
+          className="space-y-4"
+          noValidate
+          aria-label="Sign in form"
+          aria-busy={isBusy}
+        >
           <div className="space-y-2">
             <Label htmlFor="email">University email</Label>
             <Input
@@ -196,11 +273,14 @@ export default function Login({ status, canResetPassword = false }: Props) {
               value={data.email}
               onChange={(event) => updateField('email', event.target.value)}
               onBlur={() => guard.onBlur('email')}
-              aria-invalid={Boolean(guard.errors.email || errors.email)}
-              className={guard.errors.email || errors.email ? 'ux-field-invalid' : ''}
+              aria-invalid={Boolean(guard.errors.email || emailServerError)}
+              className={guard.errors.email || emailServerError ? 'ux-field-invalid' : ''}
             />
             {guard.touched.email && guard.errors.email && (
               <p className="ux-inline-error">{guard.errors.email}</p>
+            )}
+            {emailServerError && (
+              <p className="ux-inline-error">{emailServerError}</p>
             )}
           </div>
 
@@ -219,10 +299,13 @@ export default function Login({ status, canResetPassword = false }: Props) {
               value={data.password}
               onChange={(event) => updateField('password', event.target.value)}
               onBlur={() => guard.onBlur('password')}
-              hasError={Boolean(guard.errors.password || errors.password)}
+              hasError={Boolean(guard.errors.password || passwordServerError)}
             />
             {guard.touched.password && guard.errors.password && (
               <p className="ux-inline-error">{guard.errors.password}</p>
+            )}
+            {passwordServerError && (
+              <p className="ux-inline-error">{passwordServerError}</p>
             )}
           </div>
 

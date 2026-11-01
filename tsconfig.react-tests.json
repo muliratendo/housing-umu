@@ -7,6 +7,7 @@
     "include": [
         "resources/js/test/react/**/*.ts",
         "resources/js/test/react/**/*.tsx",
+        "resources/js/test/react/**/*.d.ts",
         "vitest.react.config.ts"
     ]
 }

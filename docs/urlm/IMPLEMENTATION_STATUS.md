@@ -575,3 +575,58 @@ transport cancellation, or end-to-end reconciliation.
 
   **React integration test tooling configured and verified. Login integration
   has not started.**
+
+  ## Phase 2B Login Integration — disabled by default
+
+  The current working-tree integration is selected only by the explicit
+  `integration="urlm"` prop on `Login`. The default remains `integration="legacy"`;
+  no query string, hidden flag, or normal application composition enables the
+  new path. This pass changes only the login page, React integration test
+  configuration, scoped test typing, and focused React tests. No Laravel,
+  URLM core, coordinator, registry, timer, dependency, database, or
+  environment files were changed.
+
+  Ownership is intentionally split:
+
+  - `useForm` owns draft email, password, remember, and Laravel field errors.
+  - The login adapter owns the URLM lifecycle, Inertia visit callbacks,
+    cancellation, watchdog, and terminal classification.
+  - React subscribes to snapshots and calls `detachView()` on unmount; it does
+    not dispose an active or unresolved transport during page replacement.
+  - The adapter receives the Inertia `router.visit` function directly. Tests
+    inject an isolated registry; normal construction defaults to the shared
+    application registry.
+  - URLM owns pending, validation, authentication-required, and unknown-outcome
+    presentation for the selected path. Unknown outcomes expose a normal
+    `GET /login` recovery link and never replay credentials.
+
+  The focused React suite has 8 login integration tests, and the tooling suite
+  has 3 smoke tests: 11 React tests total. The tests use the real login page,
+  adapter, coordinator, reducer, and registry while narrowly mocking Inertia
+  transport and unrelated layout/UI dependencies. They demonstrate invalid
+  submission without a visit, one visit for duplicate submission, accessible
+  pending state, scoped validation and a fresh rejection submission, password
+  clearing after outcomes, successful navigation not becoming cancellation,
+  same-instance stale-callback isolation, StrictMode transport ownership,
+  view detachment before success, and persistent no-finish recovery guidance.
+  They do not prove browser navigation, cookies, CSRF, Laravel authentication,
+  Inertia response rendering, or browser accessibility compliance.
+
+  The current working-tree integration validation is:
+
+  | Command | Exit code | Result |
+  |---|---:|---|
+  | `npm run test:react` | 0 | 2 files, 11 passed |
+
+  The remaining required matrix (core tests, combined tests, typechecks,
+  production build, and repository-wide checks) must be rerun after this
+  uncommitted integration change. Repository-wide typecheck is expected to
+  retain the unrelated `FooterLinks.patch.tsx` JSX blocker. The installed
+  Inertia 2.3.26 global `invalid` and `exception` events remain unattributed
+  to a specific login visit, so runtime response-display security readiness is
+  unresolved. Server role naming, unverified-login policy, browser behavior,
+  and production enablement remain outside this pass.
+
+  **Login code implemented behind a disabled boundary; React integration
+  evidence is passing; runtime security readiness and Laravel/browser
+  acceptance are not established. Login remains disabled for normal use.**
