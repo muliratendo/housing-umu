@@ -394,6 +394,51 @@ outcome.
 Release criteria must include a clean disposal path and no active URLM
 records/listeners after disablement.
 
+## Phase 2A contract-test correction
+
+The isolated adapter now uses an attempt-owned record containing the exact
+identity, active flag, cancellation token, cancellation-requested/called
+guards, and coordinator cancellation unregister function. Every callback
+checks the canonical `sameIdentity` comparator and the current attempt before
+mutating adapter state. A stale `onFinish`, token, page, error, or cancel
+callback cannot clear a newer attempt's resources; callbacks after disposal
+are ignored.
+
+Cancellation is registered through `OperationCoordinator.registerCancellation`.
+Explicit `cancel()` and live `dispose()` therefore use the coordinator/registry
+ownership path and invoke the exact transport token at most once. `detachView()`
+only removes view listeners. It never cancels transport. A transport token
+received after cancellation or disposal is not retained as an active handle.
+The adapter cannot guarantee cleanup of credential copies held inside an
+arbitrary injected/third-party transport.
+
+The default registry is the shared `applicationOperationRegistry`; tests may
+inject an isolated `OperationRegistry`. Separate adapters using the default
+registry single-flight the `auth.login` lifecycle, with the second adapter
+receiving the coordinator's typed joined result and no transport authority.
+
+The coordinator watchdog uses `profiles.authentication.timeoutMs` and the
+injected `TimerRegistry`. A no-callback visit enters `reconciling` and is
+finalized to `awaiting_outcome`; its exact transport token is cancelled only
+after ownership is cleared, so late cancellation/finish callbacks cannot
+replace or mutate a later lifecycle. No credential resend is possible.
+
+Subscriptions immediately receive the current authoritative snapshot, isolate
+listener exceptions, support unsubscribe and reattach, and are detached from
+transport lifetime. Page facts are reduced to component, authenticated
+boolean, verification-required boolean, guest boolean, and malformed boolean;
+raw props, user records, and identifiers are not retained. Verification
+navigation maps to the existing `AUTH_LOST` / `auth_required` contract and is
+not treated as dashboard arrival or proof that the session was lost.
+
+The adapter deliberately does not consume Inertia's global `invalid` or
+`exception` events because core 2.3.26 does not provide originating visit
+identity in those payloads. Such responses finish conservatively through
+`coordinator.finalize()` and `OUTCOME_REQUIRED` / `awaiting_outcome`.
+Inertia's default invalid-response display risk remains a runtime integration
+issue. GET `/login` recovery classification and navigation are specified but
+not implemented.
+
 ## Acceptance criteria
 
 The slice is complete only when:

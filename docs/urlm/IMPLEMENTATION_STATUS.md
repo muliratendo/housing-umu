@@ -480,7 +480,7 @@ transport cancellation, or end-to-end reconciliation.
   classification as an explicit verification prerequisite rather than assuming
   that per-visit `onError` covers transport failures.
 
-  ## Phase 2A Non-runtime Login Adapter Contract — Commit 9e4c40b
+  ## Phase 2A Non-runtime Login Adapter Contract Correction — Commit b932b40
 
   The isolated adapter contract under
   `resources/js/lib/urlm/adapters/loginAdapter.ts` is tested without runtime
@@ -494,7 +494,7 @@ transport cancellation, or end-to-end reconciliation.
 
   | Command | Exit code | Result |
   |---|---:|---|
-  | `npm test -- --run` | 0 | 4 files, 58 passed, 0 failed |
+  | `npm test -- --run` | 0 | 4 files, 68 passed, 0 failed |
   | `npm run typecheck:urlm` | 0 | Passed |
   | `npm run build` | 0 | Passed |
   | `git diff --check` | 0 | Passed |
@@ -502,3 +502,12 @@ transport cancellation, or end-to-end reconciliation.
   **Non-runtime adapter contract tested; login integration not started.**
   These Node tests do not prove React lifecycle, browser navigation, Laravel
   middleware, CSRF behavior, transport exceptions, or end-to-end authentication.
+
+  The correction pass made the adapter resources attempt-owned, wired
+  cancellation through `OperationCoordinator.registerCancellation`, used the
+  shared `applicationOperationRegistry` by default, added exact-owner watchdog
+  recovery to `awaiting_outcome`, isolated listener failures, and separated
+  view detachment from transport disposal. It still intentionally does not
+  consume unattributed global Inertia `invalid`/`exception` events. Recovery
+  navigation remains specified but unimplemented, and Inertia's default
+  non-Inertia response display risk remains a runtime integration concern.
