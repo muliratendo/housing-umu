@@ -479,3 +479,26 @@ transport cancellation, or end-to-end reconciliation.
   separately specified attribution mechanism. The plan therefore leaves that
   classification as an explicit verification prerequisite rather than assuming
   that per-visit `onError` covers transport failures.
+
+  ## Phase 2A Non-runtime Login Adapter Contract — Commit 9e4c40b
+
+  The isolated adapter contract under
+  `resources/js/lib/urlm/adapters/loginAdapter.ts` is tested without runtime
+  exports or login integration. It references `profiles.authentication`
+  unchanged, uses actual reducer/coordinator vocabulary, accepts an injected
+  Inertia-compatible visit function, rejects duplicate transport, separates
+  view detachment from transport disposal, and does not consume unattributable
+  global `invalid`/`exception` events.
+
+  Current validation:
+
+  | Command | Exit code | Result |
+  |---|---:|---|
+  | `npm test -- --run` | 0 | 4 files, 58 passed, 0 failed |
+  | `npm run typecheck:urlm` | 0 | Passed |
+  | `npm run build` | 0 | Passed |
+  | `git diff --check` | 0 | Passed |
+
+  **Non-runtime adapter contract tested; login integration not started.**
+  These Node tests do not prove React lifecycle, browser navigation, Laravel
+  middleware, CSRF behavior, transport exceptions, or end-to-end authentication.

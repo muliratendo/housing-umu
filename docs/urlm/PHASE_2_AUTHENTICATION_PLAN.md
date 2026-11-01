@@ -13,9 +13,10 @@ scope. Repository-wide verification remains blocked by the unrelated
 Phase 2 implementation is pending explicit approval. Production mutation
 readiness has not been established.
 
-This document is a reviewable implementation plan only. No adapter, runtime
-consumer, Laravel behavior, environment configuration, migration, account,
-dependency, commit, or push is part of this pass.
+This document is a reviewable implementation plan plus the isolated Phase 2A
+contract-test record. No runtime consumer, Laravel behavior, environment
+configuration, migration, account, dependency, commit, or push is part of
+this pass.
 
 ## Evidence reconciliation
 
@@ -198,24 +199,24 @@ The following table is the planned mapping. “Ownership” means the callback
 must match the active logical operation, attempt identity, generation,
 correlation, and retained transport authority before publishing an event.
 
-| Path | Framework event/callback and evidence | Ownership check | URLM event/state | Cleanup | Visible feedback and recovery |
-|---|---|---|---|---|---|
-| Valid input/start | `onBefore` permits visit; `onStart` fires before Axios | Active attempt and exact transport channel | `SUBMIT` / `submitted` | Register owned timer/listeners | Pending sign-in; no recovery yet |
-| Client-invalid input | Existing `useFormGuard` rejects before `post` | No operation exists | No URLM event | None | Inline field messages; user edits fields |
-| Laravel validation failure | Inertia page has shared `errors`; core calls `onError(errors)` after page processing | Active attempt only; preserve field-scoped errors | `VALIDATION_FAILED` / terminal classified failure | Clear timer; release transport record | Show scoped errors; no automatic retry |
-| Rejected credentials | `LoginRequest::authenticate()` returns `auth.failed` through Inertia errors | Same as validation failure | `AUTHENTICATION_REJECTED` / terminal failure | Same | Generic credential message; fresh explicit submit |
-| Throttle validation response | `LoginRequest::ensureIsNotRateLimited()` returns authoritative message and seconds/minutes | Same; do not infer from text unless server contract identifies throttle | `THROTTLED` / terminal failure | Same | Preserve authoritative message; no invented countdown |
-| Authentication success | Inertia page is replaced, then `onSuccess(page)` fires | Active attempt and expected login navigation/page evidence | `SUCCEEDED` / terminal success | Clear timer; release transport record | Follow server role/intended redirect |
-| Verification-required navigation | Server middleware/redirect sends verification page or notice | Active attempt; classify from page component/props/redirect evidence | `VERIFICATION_REQUIRED` / terminal classified outcome | Same | Show verification guidance; no dashboard assumption |
-| Unexpected guest redirect | Success-shaped navigation lands on login/guest page without supported auth evidence | Active attempt plus page identity; do not call it success | `UNKNOWN_OUTCOME` / awaiting reconciliation | Release transport; retain logical claim/observer | Safe session check; no password retransmission |
-| HTTP/server exception | Global `exception` event; per-visit `onError` is not guaranteed | Requires a separately specified visit-attribution mechanism; event payload alone is insufficient | `TRANSPORT_FAILED` only when safely classified; otherwise `UNKNOWN_OUTCOME` | Remove listener/timer exactly once | Generic safe error or reconciliation guidance |
-| Network interruption | Axios rejection without response; source routes through global `exception` | Same attribution limitation; cancellation distinguished first | `UNKNOWN_OUTCOME` | Same; retain claim if server receipt is possible | Explain result is unknown; explicit safe recovery |
-| CSRF/session expiry | Non-Inertia/redirect response or server evidence; not assumed from generic error | Match visit and supported response/page evidence | `SESSION_EXPIRED` or `UNKNOWN_OUTCOME` | Same | Navigate to safe GET/login state; never resubmit automatically |
-| Non-Inertia response | Global cancelable `invalid` event; source does not call `onError` | Requires a separately specified visit-attribution mechanism | `UNEXPECTED_RESPONSE` / classified failure or unknown | Same | Safe generic message; no raw HTML/body display |
-| Explicit client cancellation | `onCancel` precedes `onFinish`; cancel token is exact-owner authority | Exact channel and once-only cancellation guard | `CANCELLED` / terminal cancellation | Abort client visit; remove owned resources | Cancellation is explicit; no server rollback claim |
-| Finish without classified outcome | `onFinish` denotes cleanup, not success | Exact active attempt; late finish ignored | `FINALIZE` preserving unknown state | Cleanup only; never invent outcome | Keep recovery state visible if unresolved |
-| Unmount during success navigation | Page replacement can occur before `onSuccess`; component may unmount | URLM coordinator survives component disposal; callback identity still required | Accepted success only if already published; otherwise unknown | Dispose UI observer, not server lifecycle | Show resulting server page; no second submit |
-| Unmount while outcome is unknown | Component cleanup may happen after request reached server | Dispose observer and cancel only if exact token is still owned | `ABANDONED_UNKNOWN` / retained reconciliation claim | No automatic retry; bounded retention | Later safe GET/session check or explicit fresh login action |
+| Path | Framework event/callback and evidence | Ownership check | Adapter classification | Actual URLM event/state | Cleanup owner | Visible feedback and recovery |
+|---|---|---|---|---|---|---|
+| Valid input/start | `onBefore` permits visit; `onStart` fires before Axios | Active attempt and exact transport channel | Started | `CLIENT_VALID` / `submitting` after coordinator `START` / `validating` | Coordinator/timer registry | Pending sign-in; no recovery yet |
+| Client-invalid input | Existing `useFormGuard` rejects before `post` | No operation exists | Client invalid | `CLIENT_INVALID` / `blocked` if an operation is created | Form validation owner | Inline field messages; user edits fields |
+| Laravel validation failure | Inertia page has shared `errors`; core calls `onError(errors)` after page processing | Active attempt only; preserve field-scoped errors | Server validation | `SERVER_VALIDATION` / `validation_failed` | Coordinator/timer registry | Show scoped errors; no automatic retry |
+| Rejected credentials | `LoginRequest::authenticate()` returns `auth.failed` through Inertia errors | Same as validation failure | Credential rejection, represented as server validation until a structured server code exists | `SERVER_VALIDATION` / `validation_failed` | Coordinator/timer registry | Generic credential message; fresh explicit submit |
+| Throttle validation response | `LoginRequest::ensureIsNotRateLimited()` returns authoritative message and seconds/minutes | Same; no text heuristic is sufficient | Throttle only when structured authoritative metadata is supplied | `RATE_LIMIT` / `throttled`; otherwise `SERVER_VALIDATION` / `validation_failed` | Coordinator/timer registry | Preserve authoritative message; no invented countdown |
+| Authentication success | Inertia page is replaced, then `onSuccess(page)` fires | Active attempt and validated authenticated page facts | Authenticated success | `SUCCESS` / `succeeded` | Coordinator/timer registry | Follow server role/intended redirect |
+| Verification-required navigation | Server middleware/redirect sends verification page or notice | Active attempt; classify from page component/props/redirect evidence | Verification-required | `AUTH_LOST` / `auth_required` | Coordinator/timer registry | Show verification guidance; no dashboard assumption |
+| Unexpected guest redirect | Success-shaped navigation lands on login/guest page without supported auth evidence | Active attempt plus page identity; do not call it success | Guest result without supported outcome | No callback event; `coordinator.finalize()` emits `OUTCOME_REQUIRED` / `awaiting_outcome` | Coordinator/timer registry; logical claim remains bounded | Safe session check; no password retransmission |
+| HTTP/server exception | Global `exception` event; per-visit `onError` is not guaranteed | No safe visit attribution is available from the event payload | Unattributable exception | No adapter event; finish calls `coordinator.finalize()` → `OUTCOME_REQUIRED` / `awaiting_outcome` | Coordinator/timer registry | Generic safe error or reconciliation guidance |
+| Network interruption | Axios rejection without response; source routes through global `exception` | Same attribution limitation; cancellation distinguished first | Unattributable network interruption | No adapter event; finish calls `coordinator.finalize()` → `OUTCOME_REQUIRED` / `awaiting_outcome` | Coordinator/timer registry | Explain result is unknown; explicit safe recovery |
+| CSRF/session expiry | Non-Inertia/redirect response or server evidence; not assumed from generic error | Match visit and supported response/page evidence | Session/auth loss only with supported page facts | `AUTH_LOST` / `auth_required`; otherwise `OUTCOME_REQUIRED` / `awaiting_outcome` | Coordinator/timer registry | Navigate to safe GET/login state; never resubmit automatically |
+| Non-Inertia response | Global cancelable `invalid` event; source does not call `onError` | No safe visit attribution is available from the event payload | Unattributable invalid response | No adapter event; finish calls `coordinator.finalize()` → `OUTCOME_REQUIRED` / `awaiting_outcome` | Coordinator/timer registry | Safe generic message; no raw HTML/body display |
+| Explicit client cancellation | `onCancel` precedes `onFinish`; cancel token is exact-owner authority | Exact channel and once-only cancellation guard | Explicit cancellation | `CANCEL` / `cancelled`; finish calls `coordinator.finalize()` | Adapter token plus coordinator/registry | Cancellation is explicit; no server rollback claim |
+| Finish without classified outcome | `onFinish` denotes cleanup, not success | Exact active attempt; late finish ignored | Unclassified finish | `coordinator.finalize()` → `OUTCOME_REQUIRED` / `awaiting_outcome` | Coordinator/timer registry | Keep recovery state visible if unresolved |
+| Unmount during success navigation | Page replacement can occur before `onSuccess`; component may unmount | URLM coordinator survives view detachment; callback identity still required | Success remains transport-owned | `SUCCESS` / `succeeded`; `detachView()` only removes observer | Coordinator/timer registry, not view | Show resulting server page; no second submit |
+| Unmount while outcome is unknown | Component cleanup may happen after request reached server | Detach observer; do not cancel without exact user/navigation authority | Unknown outcome retained until explicit disposal/recovery | `coordinator.finalize()` → `OUTCOME_REQUIRED` / `awaiting_outcome`; later explicit `dispose()` may emit `ABANDON` / `abandoned` | Coordinator/registry | Later safe GET/session check or explicit fresh login action |
 
 ## State ownership
 
@@ -301,7 +302,7 @@ check; do not add an endpoint in this slice. A fresh GET may establish:
 - unauthenticated result: the login page is rendered;
 - verification-required result: the middleware redirects to
   `verification.notice` with its existing flash notice;
-- network/unavailable result: retain `UNKNOWN_OUTCOME` and show unavailable
+- network/unavailable result: retain `awaiting_outcome` and show unavailable
   guidance without resubmitting credentials.
 
 The recovery action is an explicit user click or navigation, never an
@@ -360,10 +361,11 @@ CSRF and browser middleware behavior must be tested through an HTTP/browser
 layer where the relevant middleware is enabled. Default Laravel feature-test
 behavior must not be treated as proof of browser CSRF behavior.
 
-The existing frontend/browser tooling is limited to Vitest 4.1.0 with a Node
-test environment and URLM-only inclusion. No React DOM, jsdom, happy-dom,
-Playwright, or Cypress dependency is present. The smallest version-compatible
-proposal is:
+The existing frontend/browser tooling includes `react-dom` 18.3.1 for the
+application runtime and Vitest 4.1.0 with a Node test environment and
+URLM-only inclusion. No React testing library, jsdom, happy-dom, Playwright,
+or Cypress dependency is present. The smallest version-compatible proposal
+for later UI/E2E work is:
 
 - add `@testing-library/react`, `@testing-library/jest-dom`, and `jsdom` as
   dev dependencies for React/form integration tests;
@@ -422,10 +424,13 @@ readiness are later separately authorized work.
 - Specify the intended unverified-account result immediately after valid
   credentials. Until resolved, the verification-required acceptance case is
   blocked; the adapter must not treat it as dashboard success.
-- Define the safe server/session check after a lost login response.
+- Verify the selected `GET /login` session reconstruction behavior after a
+  lost login response.
 - Decide the browser E2E runner and its service orchestration.
 - Establish the approved Sail/isolated-test-database execution procedure.
 - Confirm whether authentication adapter diagnostics may emit only reason
   codes or also bounded timing metadata.
 
-**Phase 2 implementation has not started.**
+**Non-runtime adapter contract tested; login integration not started.**
+The adapter is not exported from runtime application entry points, and no
+browser, Laravel, or end-to-end verification is claimed.
