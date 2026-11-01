@@ -440,3 +440,24 @@ transport cancellation, or end-to-end reconciliation.
   production mutation readiness. Phase 2 requires explicit approval; durable
   mutation infrastructure belongs to the later mutation-integration phase,
   not the authentication vertical slice.
+
+  ## Phase 2 Authentication Planning — Commit 2d73b21
+
+  The current baseline is `2d73b219770f602822d9b112ebff5e51273ce049`, whose
+  parent is `7565a0c0b9f7ee41c91bfbabcd5e6eda13aeae6e`. The evidence-closure
+  tests and documentation reconciliation were committed in `2d73b21`; the
+  earlier report measured the parent baseline plus those changes.
+
+  At the current snapshot, the URLM suite reports 49 passed tests across three
+  files, URLM typecheck passes, and the frontend build passes. Phase 1 core
+  remains **ACCEPTED within agreed scope**. Repository-wide verification remains
+  **BLOCKED** by the unrelated `FooterLinks.patch.tsx` JSX error and the
+  native-WSL MySQL service-name resolution failure. Phase 2 remains
+  **PENDING IMPLEMENTATION AUTHORIZATION**. Production mutation readiness is
+  not established.
+
+  The bounded authentication planning document is
+  `docs/urlm/PHASE_2_AUTHENTICATION_PLAN.md`. It covers the current
+  React-to-Inertia-to-Laravel flow, installed Inertia callback semantics,
+  adapter ownership, authentication test matrix, Sail/MySQL prerequisites,
+  rollback, and excluded scope. No Phase 2 implementation has started.
