@@ -1,9 +1,9 @@
 # Housing@UMU Product Requirements Document
 
-**Status:** DRAFT — pending institutional and product-owner review  
-**Inspection date:** 2026-10-28  
-**Baseline:** `main` at `5a0c8cd4f68587d8d058426118437a93cceeb084`  
-**Repository:** `/home/tendo_mulira/projects/housing-umu`  
+**Status:** DRAFT — pending institutional and product-owner review
+**Inspection date:** 2026-10-31
+**Baseline:** `main` at `7565a0c0b9f7ee41c91bfbabcd5e6eda13aeae6e`
+**Repository:** `/home/tendo_mulira/projects/housing-umu`
 **Audience:** University accommodation owners, wardens, Dean/administrative stakeholders, developers, testers, and operations
 
 ## 1. Document control and evidence baseline
@@ -12,11 +12,13 @@ This PRD is an evidence-based description of the current checkout, not an
 implementation authorization. It distinguishes product intent, source
 evidence, automated evidence, and browser evidence.
 
-The worktree was already dirty before this analysis. Existing changes were
-preserved: the `artisan` executable-bit modification, deleted Windows
-`Zone.Identifier` sidecars under `public/images/hostels`, their untracked
-colon-named counterparts, and the modified URLM status document. No such
-changes are treated as product evidence.
+The original product inspection was performed on 2026-10-28 against
+`5a0c8cd4f68587d8d058426118437a93cceeb084`. Its scope confirmation described
+the worktree and analysis session at that time. This reconciliation pass
+inspects the later baseline `7565a0c0b9f7ee41c91bfbabcd5e6eda13aeae6e`; that
+commit also contains the `artisan` mode change and metadata-file changes.
+Neither those repository changes nor this documentation pass is product
+implementation evidence.
 
 The native execution context was WSL Ubuntu. The running application was
 observed at `http://localhost/` on port 80. Vite was separately listening on
@@ -59,6 +61,10 @@ authenticated browser verification, PHP test execution against a working test
 database, durable server-side idempotency/reconciliation, explicit approval
 workflow semantics, and resolution of the first-year campus policy
 contradiction.
+
+The PHP test-environment blocker is a repository-wide verification limitation,
+not a framework-neutral URLM core acceptance condition. URLM Phase 1 core
+acceptance is assessed separately from Laravel test-environment recovery.
 
 ### Proposed board-review MVP boundary
 
@@ -202,19 +208,19 @@ retention periods are decision items.
 
 #### FR-PUB-001 — Discover accommodation
 
-**Actor/need:** Guest or student; understand available hostels before applying.  
+**Actor/need:** Guest or student; understand available hostels before applying.
 **Shall:** The system shall expose a public hostel catalogue and detail view
 with management type, gender scope, availability, description, rooms or
 amenities where appropriate, and a clear route to login/application.
 **Preconditions/trigger:** No authentication required; guest opens `/hostels`
-or a hostel slug.  
+or a hostel slug.
 **Authorization/scope:** Publicly visible hostels must exclude closed or
-deleted records according to the public controller policy.  
+deleted records according to the public controller policy.
 **Alternate paths:** Empty catalogue, unavailable hostel, invalid slug, and
-loading/error states shall give a meaningful next action.  
+loading/error states shall give a meaningful next action.
 **Acceptance:** Given an active public hostel, when a guest opens its detail
 page, then the page identifies its management type and eligibility guidance
-and does not expose private student/allocation data.  
+and does not expose private student/allocation data.
 **Evidence/status:** Public routes and pages; browser landing page observed.
 The list/detail workflow itself was not successfully opened in the browser
 session and remains source-verified only. The live footer contains a “View
@@ -226,19 +232,19 @@ defects, not proof of missing backend routes.
 #### FR-AUTH-001 — Authenticate and recover an account
 
 **Actor/need:** Student or administrator; securely access the appropriate
-portal.  
+portal.
 **Shall:** The system shall provide login, registration, email verification,
 password reset, password confirmation, profile update, and role-based
-redirects.  
+redirects.
 **Preconditions:** Valid account and, for protected routes, verified email and
-required role.  
+required role.
 **Errors:** Invalid credentials, unverified account, expired reset token,
 session expiry, and unauthorized role shall be explicit and shall not expose
-secrets.  
+secrets.
 **Acceptance:** Given a registered verified student, when login succeeds, then
 the student reaches the student dashboard; given an unverified account, when
 the student requests a protected page, then access is blocked with a
-verification action.  
+verification action.
 **Evidence/status:** Laravel auth routes/controllers, Breeze-style React
 pages, and auth feature tests. Browser authentication was not verified.
 Google OAuth, 2FA, and passkeys are planned/commented rather than
@@ -258,37 +264,37 @@ institutional import authority and end-to-end synchronization are unresolved.
 
 #### FR-TERM-001 — Select an active term and window
 
-**Actor:** Authorized academic administrator.  
+**Actor:** Authorized academic administrator.
 **Shall:** The system shall define the active academic year/term, its
 application open/close dates, and hostel application availability. A student
 submission shall be rejected if no active term exists or the window closes
-before the authoritative server check.  
+before the authoritative server check.
 **Acceptance:** Given a closed term window, when a student submits, then no
 application is created/finalized and the UI explains that the window is
-closed.  
+closed.
 **Evidence/status:** Academic term/year models, migrations, admin routes, and
 `ApplicationService`; no completed PHP/browser mutation verification.
 
 #### FR-APP-001 — Submit one term-scoped application
 
-**Actor:** Verified student.  
-**Need:** Request accommodation without duplicate or ineligible records.  
+**Actor:** Verified student.
+**Need:** Request accommodation without duplicate or ineligible records.
 **Shall:** The system shall accept a hostel, term, room type/capacity,
 preferred rooms, notes/special needs, and relevant permission evidence; it
 shall enforce one application per student/hostel/term, no active allocation
-conflict, application window, and effective gender policy.  
+conflict, application window, and effective gender policy.
 **Authorization:** Student may create/update only their own application;
-administrators process only records in their permitted scope.  
+administrators process only records in their permitted scope.
 **Alternate paths:** Duplicate submission returns an actionable validation
 error; no active term, no eligible data, closed hostel, policy mismatch, or
 stale page returns an explicit failure. A bed becoming unavailable after the
 form opens must be rechecked at allocation, not treated as an application
-guarantee.  
+guarantee.
 **Postcondition:** A submitted application is non-draft with `pending` status
-and a stable form/application identity.  
+and a stable form/application identity.
 **Acceptance:** Given an open term and eligible verified student, when the
 student submits valid data twice, then exactly one application exists and the
-second response identifies the existing record.  
+second response identifies the existing record.
 **Evidence/status:** `ApplicationService`, `StoreApplicationRequest`,
 application migration unique index, React application pages. PHP feature
 tests could not be rerun because the configured `mysql` test hostname was
@@ -306,25 +312,25 @@ adjacent UX work, but browser and PHP acceptance are incomplete.
 
 #### FR-ALLOC-001 — Allocate an eligible bed
 
-**Actor:** Authorized allocator; system service.  
+**Actor:** Authorized allocator; system service.
 **Need:** Assign a real bed without exceeding effective eligibility or
-capacity.  
+capacity.
 **Shall:** Allocation shall be term-scoped and select only an active room and
 available bed in the application hostel, respecting room-over-hostel gender
 policy, room type preference unless an authorized override is explicit, and
 first-year affiliated access rules. A specific manual bed choice shall be
-revalidated transactionally.  
+revalidated transactionally.
 **Authorization/scope:** Warden/affiliated administrator is limited to
-assigned hostels; global roles are broader according to policy.  
+assigned hostels; global roles are broader according to policy.
 **Alternate paths:** No eligible bed produces a waitlisted application; a
 stale bed selection produces a conflict or waitlist outcome; invalid hostel,
-gender, term, or permission produces a visible error.  
+gender, term, or permission produces a visible error.
 **Postcondition:** Allocation status is `allocated`; application status is
-updated separately and historical allocation data remains retained.  
+updated separately and historical allocation data remains retained.
 **Acceptance:** Given two eligible applications competing for one bed, when
 both allocation requests execute concurrently, then at most one allocation
 holds the bed and the other receives a deterministic conflict/waitlist
-outcome.  
+outcome.
 **Evidence/status:** `AllocationService::create`, transaction and
 `lockForUpdate`, allocation migration unique index, admin allocation routes.
 No end-to-end concurrent test was verified in this inspection.
@@ -390,6 +396,54 @@ Notifications (email/SMS/push), SIS imports/synchronization, general academic
 room booking, campus property management, payment workflows, and a complete
 Dean exception approval UI are not treated as implemented. They remain
 Could/Won't until scope and acceptance are approved.
+
+### Must functional requirement traceability
+
+The following is source traceability, not end-to-end acceptance. It was
+inspected against baseline
+`7565a0c0b9f7ee41c91bfbabcd5e6eda13aeae6e`. “Not verified” and “not
+observed” are intentional evidence states.
+
+| Requirement | Route/controller/service symbol present | Authorization or business-rule enforcement | Effective test | Browser scenario |
+|---|---|---|---|---|
+| FR-PUB-001 | `PublicHostelController::index`, `PublicHostelController::show`; `/hostels`, `/hostels/{hostel}` | Public controller filters public hostel visibility | Not verified | Landing observed; catalogue/detail not observed |
+| FR-AUTH-001 | `AuthenticatedSessionController`, `RegisteredUserController`, `VerifyEmailController`, password controllers; `routes/auth.php` | `auth`, `verified`, and role middleware on protected routes | Laravel auth tests present; current PHP run blocked | Not observed |
+| FR-STU-001 | `Admin\StudentVerificationController`; `VerifiedStudentRecord` | Verification and student-role middleware/policies; authoritative import source not found | Not verified | Not observed |
+| FR-TERM-001 | `Admin\AcademicTermController`, `Admin\AcademicYearController`; `ApplicationService` | Term activity and application-window checks in application service | Not verified | Not observed |
+| FR-APP-001 | `Student\ApplicationController`; `ApplicationService::create` / finalization path; `StoreApplicationRequest` | Student ownership, duplicate uniqueness, active allocation, window, gender, and affiliated-hostel checks | Not verified; PHP environment blocked | Not observed |
+| FR-ALLOC-001 | `Admin\AllocationController`; `AllocationService::create` | Hostel scope policy, gender/room checks, bed availability, transaction and `lockForUpdate` | Not verified; PHP environment blocked | Not observed |
+| FR-ALLOC-002 | `AllocationService::create`; allocation migration unique indexes | Service active-status checks and database uniqueness; agreement for all inactive statuses remains unresolved | Not verified; PHP environment blocked | Not observed |
+| FR-WAIT-001 | `Admin\AllocationController`; `AllocationObserver::promoteWaitlistFor` | Waitlist position and assigned-hostel scope; fairness/tie-breaking policy remains a decision | Not verified | Not observed |
+| FR-PERM-001 | `ChecksHostelAccess`, `HostelPolicy`, admin route middleware | Assigned-hostel manager scope and explicit global permissions | Not verified; negative matrix absent | Not observed |
+| FR-OCC-001 | `Student\AllocationController`, `Admin\AllocationController`; `Allocation` lifecycle fields | Allocation status and check-in/out authorization; rollover, retention, revocation, and exception authority unresolved | Not verified | Not observed |
+
+### Expanded partial functional traceability
+
+- **Reporting and exports (FR-REP-001):** `Admin\OccupancyReportController`
+  and `OccupancyReportService::buildReport` provide the observed reporting
+  surface. Export format, authorization coverage, and browser behavior are
+  **not verified**; no browser scenario was observed.
+- **Student registry verification (FR-REG-001):**
+  `Admin\StudentVerificationController` and `VerifiedStudentRecord` provide
+  the observed verification surface. Import authority, synchronization, and
+  end-to-end verification are **not verified**; no browser scenario was
+  observed.
+- **Audit (FR-AUD-001):** `ActivityLog` and activity-log migrations provide
+  record infrastructure, while complete administrative audit UI, retention,
+  and coverage are **not verified**; no browser scenario was observed.
+- **Transfers:** no authoritative transfer controller/service and no
+  approved transfer policy were established; **not verified**, no browser
+  scenario observed.
+- **Revocation/eviction:** allocation lifecycle fields and administrative
+  routes expose related status concepts, but complete authorization,
+  consequences, and audit behavior are **not verified**; no browser scenario
+  observed.
+- **Semester/year retention:** `Allocation` retention fields and academic
+  year/term models exist, but rollover/renewal behavior is unresolved;
+  **not verified**, no browser scenario observed.
+- **Exception approval:** permission fields and policy references exist, but
+  no complete authoritative approval controller/state machine was found;
+  **not verified**, no browser scenario observed.
 
 ## 7. Business rules and decision register summary
 
@@ -530,6 +584,13 @@ durable server idempotency, reconciliation, and end-to-end authentication
 verification remain future work. Redis keep-warm behavior is not a reliability
 guarantee and is not accepted as a requirement without operational evidence.
 
+Phase 1 core acceptance is a framework-neutral engineering decision. Phase 2
+authentication/read integration requires explicit authorization before work
+starts. Production mutation readiness is a later boundary requiring durable
+server idempotency, reconciliation, database-backed duplicate protection, and
+integration evidence; it is not silently included in Phase 2 authentication
+scope.
+
 ## 11. Technical context and tooling decisions
 
 | Area | Observed choice | Gap/conservative action |
@@ -594,19 +655,19 @@ Backlog → Ready → In Progress → Review/Test → Done only with evidence.
 | ID | Outcome | Links | Priority/size | Status |
 |---|---|---|---|---|
 | KB-001 | Approve first-year policy and exception authority | BR-005, BR-010, FR-APP-001 | Must/L | Backlog |
-| KB-002 | Establish isolated MySQL test service and rerun PHP suite | NFR-DATA-001, FR-APP-001 | Must/M | Blocked |
+| KB-002 | Establish isolated MySQL test service and rerun PHP suite | NFR-DATA-001, FR-APP-001 | Must/M | Blocked — repository verification |
 | KB-003 | Build authenticated browser evidence pack | FR-AUTH-001, FR-APP-001 | Must/M | Ready |
 | KB-004 | Complete allocation concurrency and status acceptance tests | FR-ALLOC-001/002, BR-002 | Must/L | Ready |
 | KB-005 | Specify waitlist fairness and promotion evidence | FR-WAIT-001, BR-009 | Must/M | Backlog |
 | KB-006 | Complete hostel-scope negative authorization matrix | FR-PERM-001, NFR-SEC-001 | Must/M | Ready |
-| KB-007 | Integrate URLM with authentication/read/mutation adapters | NFR-UX-001, NFR-REL-001 | Must/L | In development |
+| KB-007 | Integrate URLM with authentication/read/mutation adapters | NFR-UX-001, NFR-REL-001 | Must/L | Backlog — no adapter implementation evidence |
 | KB-008 | Define retention, rollover, revocation, and historical reporting | FR-OCC-001, BR-006 | Must/L | Backlog |
 | KB-009 | Repair public navigation/policy links and verify responsive/accessibility states | FR-PUB-001, NFR-A11Y-001 | Should/S | Ready |
 | KB-010 | Document backup/restore, monitoring, support ownership, and rollback | NFR-OBS-001, NFR-OPS-001 | Must/M | Backlog |
 | KB-011 | Decide notifications, imports, payments, and adjacent modules | FR-NOT-001, FR-INT-001 | Could/M | Backlog |
 
 **Definition of Ready:** approved requirement/decision, scoped actor and
-records, fixtures, dependencies, and test evidence plan.  
+records, fixtures, dependencies, and test evidence plan.
 **Definition of Done:** implementation, server-side authorization and
 validation, relevant automated tests, browser evidence where applicable,
 documentation updated, `git diff --check` clean, and no unrelated worktree

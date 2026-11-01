@@ -79,6 +79,118 @@ describe('URLM coordination', () => {
         expect(secondFollower.getState().status).toBe('validating');
     });
 
+    it('keeps owner authority and two FIFO followers unchanged for failed replacements', () => {
+        const createUnresolvedQueue = () => {
+            const registry = new OperationRegistry();
+            const profile = { ...profiles.read, concurrency: 'queue' as const, retry: 'safe_transient' as const };
+            const owner = new OperationCoordinator('failed-replacement', profile, registry);
+            const firstFollower = new OperationCoordinator('failed-replacement', profile, registry);
+            const secondFollower = new OperationCoordinator('failed-replacement', profile, registry);
+            const ownerIdentity = startedIdentity(owner.start());
+            const firstQueued = firstFollower.start();
+            const secondQueued = secondFollower.start();
+            if (firstQueued?.kind !== 'queued' || secondQueued?.kind !== 'queued') {
+                throw new Error('expected queued followers');
+            }
+            owner.dispatch({ type: 'CLIENT_VALID', identity: ownerIdentity });
+            expect(owner.finalize(ownerIdentity)).toEqual({ kind: 'needs_outcome_classification' });
+            const ownerStates: string[] = [];
+            const firstStates: string[] = [];
+            const secondStates: string[] = [];
+            const unsubscribeOwner = registry.observe(ownerIdentity, (state) => ownerStates.push(state.status));
+            const unsubscribeFirst = firstQueued.subscribe((state) => firstStates.push(state.status));
+            const unsubscribeSecond = secondQueued.subscribe((state) => secondStates.push(state.status));
+            return {
+                registry,
+                owner,
+                firstFollower,
+                secondFollower,
+                ownerIdentity,
+                firstQueued,
+                secondQueued,
+                ownerStates,
+                firstStates,
+                secondStates,
+                unsubscribe: () => {
+                    unsubscribeOwner();
+                    unsubscribeFirst();
+                    unsubscribeSecond();
+                },
+            };
+        };
+
+        const assertUnchanged = (
+            fixture: ReturnType<typeof createUnresolvedQueue>,
+            result: ReturnType<OperationRegistry['reacquireClaim']>,
+        ) => {
+            expect(result.kind).not.toBe('replaced');
+            expect(fixture.owner.getIdentity()).toEqual(fixture.ownerIdentity);
+            expect(fixture.owner.getState().status).toBe('awaiting_outcome');
+            expect(fixture.registry.claimCount()).toBe(1);
+            expect(fixture.registry.activeRecordCount()).toBe(2);
+            expect(fixture.firstFollower.getState().status).toBe('queued');
+            expect(fixture.secondFollower.getState().status).toBe('queued');
+            expect(fixture.firstQueued.position).toBe(1);
+            expect(fixture.secondQueued.position).toBe(2);
+            expect(fixture.ownerStates).toEqual(['awaiting_outcome']);
+            expect(fixture.firstStates).toEqual(['queued']);
+            expect(fixture.secondStates).toEqual(['queued']);
+        };
+
+        {
+            const fixture = createUnresolvedQueue();
+            const staleOwner = { ...fixture.ownerIdentity, attemptId: 'attempt_stale' };
+            const next = { ...fixture.ownerIdentity, attemptId: 'attempt_next', generation: fixture.ownerIdentity.generation + 1 };
+            assertUnchanged(fixture, fixture.registry.reacquireClaim(
+                'failed-replacement',
+                staleOwner,
+                next,
+                'queue',
+                'safe',
+            ));
+            fixture.unsubscribe();
+        }
+
+        {
+            const fixture = createUnresolvedQueue();
+            const next = { ...fixture.ownerIdentity, attemptId: 'attempt_next', generation: fixture.ownerIdentity.generation };
+            assertUnchanged(fixture, fixture.registry.reacquireClaim(
+                'failed-replacement',
+                fixture.ownerIdentity,
+                next,
+                'queue',
+                'safe',
+            ));
+            fixture.unsubscribe();
+        }
+
+        {
+            const fixture = createUnresolvedQueue();
+            const next = { ...fixture.ownerIdentity, attemptId: 'attempt_next', generation: fixture.ownerIdentity.generation + 1 };
+            assertUnchanged(fixture, fixture.registry.reacquireClaim(
+                'failed-replacement',
+                fixture.ownerIdentity,
+                next,
+                'single_flight',
+                'safe',
+            ));
+            fixture.unsubscribe();
+        }
+
+        const fixture = createUnresolvedQueue();
+        const replacement = fixture.owner.retry('user');
+        expect(replacement.kind).toBe('started');
+        if (replacement.kind !== 'started') return;
+        fixture.owner.dispatch({ type: 'SUCCESS', identity: replacement.identity });
+        expect(fixture.firstFollower.getState().status).toBe('validating');
+        expect(fixture.secondFollower.getState().status).toBe('queued');
+        const firstIdentity = fixture.firstFollower.getIdentity()!;
+        fixture.firstFollower.dispatch({ type: 'CLIENT_VALID', identity: firstIdentity });
+        fixture.firstFollower.dispatch({ type: 'SUCCESS', identity: firstIdentity });
+        expect(fixture.secondFollower.getState().status).toBe('validating');
+        fixture.unsubscribe();
+    });
+
     it('keeps parallel unresolved claims independently addressable', () => {
         const registry = new OperationRegistry();
         const profile = { ...profiles.read, concurrency: 'parallel' as const };
@@ -543,6 +655,100 @@ describe('URLM coordination', () => {
         expect(older.getIdentity()).toEqual(olderId);
         expect(newer.start().kind).toBe('already_owner');
         expect(registry.getState(newerId)?.status).toBe('awaiting_outcome');
+    });
+
+    it('preserves the coordinator retry budget across repeated blocked retries', () => {
+        const registry = new OperationRegistry();
+        const targetProfile = {
+            ...profiles.read,
+            concurrency: 'parallel' as const,
+            retry: 'safe_transient' as const,
+            retryBudget: 2,
+        };
+        const target = new OperationCoordinator('blocked-budget-repeated', targetProfile, registry);
+        const first = startedIdentity(target.start());
+        target.dispatch({ type: 'NETWORK_LOST', identity: first });
+
+        const foreign = new OperationCoordinator(
+            'blocked-budget-repeated',
+            { ...profiles.read, concurrency: 'single_flight' as const },
+            registry,
+        );
+        const foreignIdentity = startedIdentity(foreign.start());
+        foreign.finalize(foreignIdentity);
+        expect(target.retry('user')).toEqual({ kind: 'blocked_by_claim', identity: foreignIdentity });
+        expect(target.retry('user')).toEqual({ kind: 'blocked_by_claim', identity: foreignIdentity });
+
+        foreign.dispatch({ type: 'SUCCESS', identity: foreignIdentity });
+        const retryOne = target.retry('user');
+        expect(retryOne.kind).toBe('started');
+        if (retryOne.kind !== 'started') return;
+        target.dispatch({ type: 'NETWORK_LOST', identity: retryOne.identity });
+        const retryTwo = target.retry('user');
+        expect(retryTwo.kind).toBe('started');
+        if (retryTwo.kind !== 'started') return;
+        target.dispatch({ type: 'NETWORK_LOST', identity: retryTwo.identity });
+        expect(target.retry('user')).toEqual({ kind: 'budget_exhausted' });
+    });
+
+    it('rejects retries at budget exhaustion without creating a new attempt', () => {
+        const registry = new OperationRegistry();
+        const profile = {
+            ...profiles.read,
+            concurrency: 'queue' as const,
+            retry: 'safe_transient' as const,
+            retryBudget: 2,
+        };
+        const timers = new TimerRegistry();
+        const owner = new OperationCoordinator('budget-exhaustion', profile, registry, timers);
+        const firstFollower = new OperationCoordinator('budget-exhaustion', profile, registry);
+        const secondFollower = new OperationCoordinator('budget-exhaustion', profile, registry);
+        const first = startedIdentity(owner.start());
+        const firstQueued = firstFollower.start();
+        const secondQueued = secondFollower.start();
+        expect(firstQueued?.kind).toBe('queued');
+        expect(secondQueued?.kind).toBe('queued');
+        if (firstQueued?.kind !== 'queued' || secondQueued?.kind !== 'queued') return;
+        const observed: string[] = [];
+        const unsubscribe = firstQueued.subscribe((state) => observed.push(state.status));
+
+        const completeUncertainAttempt = () => {
+            const identity = owner.getIdentity()!;
+            owner.dispatch({ type: 'CLIENT_VALID', identity });
+            expect(owner.finalize(identity)).toEqual({ kind: 'needs_outcome_classification' });
+            return owner.retry('user');
+        };
+
+        const retryOne = completeUncertainAttempt();
+        expect(retryOne.kind).toBe('started');
+        const retryTwo = completeUncertainAttempt();
+        expect(retryTwo.kind).toBe('started');
+        if (retryTwo.kind !== 'started') return;
+        const identityBeforeExhaustion = retryTwo.identity;
+        owner.setWatchdog(() => undefined);
+        expect(timers.has(identityBeforeExhaustion)).toBe(true);
+        owner.dispatch({ type: 'CLIENT_VALID', identity: identityBeforeExhaustion });
+        expect(owner.finalize(identityBeforeExhaustion)).toEqual({ kind: 'needs_outcome_classification' });
+        expect(timers.has(identityBeforeExhaustion)).toBe(false);
+        const observedBeforeExhaustion = [...observed];
+        const activeRecordsBeforeExhaustion = registry.activeRecordCount();
+        const claimsBeforeExhaustion = registry.claimCount();
+        const stateBeforeExhaustion = owner.getState();
+        const exhausted = owner.retry('user');
+        expect(exhausted).toEqual({ kind: 'budget_exhausted' });
+        expect(owner.getIdentity()).toEqual(identityBeforeExhaustion);
+        expect(owner.getState()).toEqual(stateBeforeExhaustion);
+        expect(registry.getByIdentity(identityBeforeExhaustion)).toBeUndefined();
+        expect(registry.activeRecordCount()).toBe(activeRecordsBeforeExhaustion);
+        expect(registry.claimCount()).toBe(claimsBeforeExhaustion);
+        expect(observed).toEqual(observedBeforeExhaustion);
+        expect(timers.has(identityBeforeExhaustion)).toBe(false);
+        expect(firstFollower.getState().status).toBe('queued');
+        expect(secondFollower.getState().status).toBe('queued');
+        expect(firstQueued.position).toBe(1);
+        expect(secondQueued.position).toBe(2);
+        unsubscribe();
+        expect(first).toBeDefined();
     });
 
     it('does not consume retry budget when authority blocks the retry', () => {

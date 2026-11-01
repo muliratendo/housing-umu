@@ -1,8 +1,14 @@
 # Housing@UMU PRD Evidence Appendix
 
-**Evidence baseline:** `main` / `5a0c8cd4f68587d8d058426118437a93cceeb084`  
-**Inspection date:** 2026-10-28  
+**Evidence baseline:** `main` / `7565a0c0b9f7ee41c91bfbabcd5e6eda13aeae6e`
+**Inspection date:** 2026-10-31
 **Classification:** source inspected unless explicitly marked otherwise
+
+The browser observations below are historical observations from the
+2026-10-28 inspection of commit
+`5a0c8cd4f68587d8d058426118437a93cceeb084`. Navigation failures remain
+unclassified: the evidence does not establish whether they were tooling,
+server, or application failures.
 
 ## 1. Worktree and runtime
 
@@ -67,6 +73,12 @@ The URLM status document reports, for commit `5a0c8cd`, that:
   records historical connected-baseline results, but those are not fresh
   acceptance for this PRD.
 
+The later evidence-closure rerun on commit
+`7565a0c0b9f7ee41c91bfbabcd5e6eda13aeae6e` added three focused coordinator
+tests and reported 3 URLM test files with 49 passing tests. It accepted the
+framework-neutral core separately from the repository-wide TypeScript and PHP
+environment blockers.
+
 The repository's visible PHP tests are primarily authentication/profile
 coverage. No verified current end-to-end accommodation suite was found.
 Therefore source-level allocation and application evidence is not promoted to
@@ -98,7 +110,9 @@ names as delivered product features.
 - No form was submitted; success, duplicate, conflict, and error responses
   for writes remain unverified.
 - No credentials or local secrets were inspected.
-- No tests, migrations, seeders, services, or external integrations were
-  started or changed for this analysis.
+- No migrations, seeders, services, or external integrations were started or
+  changed for the original analysis. The later baseline includes the URLM
+  evidence tests and documentation reconciliation; its `artisan` mode and
+  metadata-file changes are not product evidence.
 - Source comments and README statements were treated as claims requiring
   corroboration, not as proof.

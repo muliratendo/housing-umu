@@ -376,3 +376,67 @@ and integration tests covering Laravel decisions and final React state exist.
 - No dependency was installed.
 - No unrelated file was modified.
 - No commit or push was performed.
+
+## Evidence Closure — Commit 7565a0c
+
+**Review date:** 2026-10-31
+**Reviewed commit:** `7565a0c0b9f7ee41c91bfbabcd5e6eda13aeae6e`
+**Parent:** `5a0c8cd4f68587d8d058426118437a93cceeb084`
+
+This section supersedes the earlier 2026-10-20 acceptance counts for the
+three known evidence gaps. The earlier section remains historical evidence
+for commit `5a0c8cd`; it is not the result of this later commit.
+
+### New evidence
+
+The URLM coordinator suite now includes 41 tests. The added tests are:
+
+- `keeps owner authority and two FIFO followers unchanged for failed replacements`
+  — independently rejects stale expected-owner identity, invalid generation,
+  and policy mismatch while preserving the unresolved claim, owner observer,
+  queued follower positions, and active-record count; then verifies valid
+  replacement and ordered promotion.
+- `preserves the coordinator retry budget across repeated blocked retries`
+  — repeats public coordinator retries while a foreign unresolved claim blocks
+  authority, then proves both configured retries remain available after the
+  claim resolves.
+- `rejects retries at budget exhaustion without creating a new attempt`
+  — performs two legal uncertain-outcome retries, then proves exhaustion leaves
+  identity, state, records, claims, observers, queue order, and timer ownership
+  unchanged.
+
+The current URLM test run reports 3 files and 49 tests passed, with 0 failed,
+0 skipped, and 0 todo. The complete framework-neutral matrix was rerun on this
+commit; its command results are recorded in the completion report for this
+review.
+
+### Reconciled grouped invariant accounting
+
+The acceptance matrix uses 22 stable grouped invariant rows, not a test count:
+
+- PASS: 22
+- FAIL: 0
+- NOT DEMONSTRATED: 0
+
+The framework-neutral evidence now covers identity and reducer safety,
+authority and queue atomicity, retry and repeat-safety decisions, cancellation
+and finalization, observer continuity, bounded retention, and sanitized
+failure classification. The core still does not prove transport credential
+transmission, Laravel/Inertia integration, server-side idempotency
+enforcement, database-backed duplicate-mutation protection, production
+transport cancellation, or end-to-end reconciliation.
+
+### Decisions
+
+- **Decision A — Framework-neutral Phase 1 core: ACCEPTED.**
+  All 22 agreed grouped framework-neutral invariants have effective passing
+  implementation and test evidence.
+- **Decision B — Repository-wide verification: BLOCKED.**
+  The unrelated repository TypeScript error in
+  `resources/js/components/Profile/FooterLinks.patch.tsx` and the MySQL
+  test-environment DNS failure remain outside URLM core.
+- **Decision C — Phase 2: PENDING — NOT AUTHORIZED.**
+  Phase 2 authorization is separate from Phase 2 completion criteria and from
+  production mutation readiness. Phase 2 requires explicit approval; durable
+  mutation infrastructure belongs to the later mutation-integration phase,
+  not the authentication vertical slice.
