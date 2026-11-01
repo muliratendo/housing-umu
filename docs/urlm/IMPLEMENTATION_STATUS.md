@@ -511,3 +511,27 @@ transport cancellation, or end-to-end reconciliation.
   consume unattributed global Inertia `invalid`/`exception` events. Recovery
   navigation remains specified but unimplemented, and Inertia's default
   non-Inertia response display risk remains a runtime integration concern.
+
+  ## Phase 2A Cleanup Closure — Commit 8da5a30
+
+  The cleanup correction tests throwing watchdog cancellation tokens,
+  synchronous cancel/finish reentrancy for explicit cancellation, disposal,
+  and watchdog recovery, accepted terminal outcomes without `onFinish`,
+  staggered exact-owner watchdog deadlines, same-instance stale callbacks,
+  active and awaiting-outcome joined observation, and malformed page input.
+  Finalization is protected from transport-token errors by releasing adapter
+  ownership before cancellation and always invoking coordinator finalization.
+
+  Current validation:
+
+  | Command | Exit code | Result |
+  |---|---:|---|
+  | `npm test -- --run` | 0 | 4 files, 76 passed, 0 failed |
+  | `npm run typecheck:urlm` | 0 | Passed |
+  | `npm run build` | 0 | Passed |
+  | `git diff --check` | 0 | Passed |
+
+  **Non-runtime adapter contract tested; login integration not started.**
+  These tests prove adapter logic only. They do not prove React lifecycle,
+  browser navigation, Laravel middleware or CSRF behavior, transport
+  exception attribution, or end-to-end authentication.

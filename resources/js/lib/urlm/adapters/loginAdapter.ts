@@ -50,26 +50,31 @@ const safeNotify = <T>(listener: (value: T) => void, value: T): void => {
 };
 
 const pageFacts = (page: Page): LoginPageFacts => {
-    const rawProps = page.props;
-    if (!rawProps || typeof rawProps !== 'object') {
-        return { component: page.component, authenticated: false, verificationRequired: false, guest: false, malformed: true };
+    try {
+        const component = typeof page?.component === 'string' ? page.component : '';
+        const rawProps = page?.props;
+        if (!rawProps || typeof rawProps !== 'object') {
+            return { component, authenticated: false, verificationRequired: false, guest: false, malformed: true };
+        }
+
+        const props = rawProps as { auth?: { user?: { id?: string | number } | null }; verificationRequired?: unknown };
+        const user = props.auth?.user;
+        const authenticated = typeof user === 'object' &&
+            user !== null &&
+            (typeof user.id === 'string' || typeof user.id === 'number');
+        const verificationRequired = props.verificationRequired === true || component === 'Auth/VerifyEmail';
+        const guest = user === null;
+
+        return {
+            component,
+            authenticated,
+            verificationRequired,
+            guest,
+            malformed: !props.auth || (user !== null && !authenticated),
+        };
+    } catch {
+        return { component: '', authenticated: false, verificationRequired: false, guest: false, malformed: true };
     }
-
-    const props = rawProps as { auth?: { user?: { id?: string | number } | null }; verificationRequired?: unknown };
-    const user = props.auth?.user;
-    const authenticated = typeof user === 'object' &&
-        user !== null &&
-        (typeof user.id === 'string' || typeof user.id === 'number');
-    const verificationRequired = props.verificationRequired === true || page.component === 'Auth/VerifyEmail';
-    const guest = user === null;
-
-    return {
-        component: page.component,
-        authenticated,
-        verificationRequired,
-        guest,
-        malformed: !props.auth || (user !== null && !authenticated),
-    };
 };
 
 export const createLoginAdapter = (
@@ -102,18 +107,31 @@ export const createLoginAdapter = (
         if (isCurrentAttempt(coordinator, attempt, disposed)) coordinator.dispatch(event);
     };
 
-    const finishAttempt = (attempt: AttemptRecord, cancelTransport = false): void => {
+    const releaseAttempt = (attempt: AttemptRecord): void => {
         if (!isCurrentAttempt(coordinator, attempt, disposed)) return;
         attempt.active = false;
         currentAttempt = undefined;
         attempt.unregisterCancellation();
-        const cancel = attempt.cancelToken;
         attempt.cancelToken = undefined;
-        if (cancelTransport && cancel && !attempt.cancelCalled) {
-            attempt.cancelCalled = true;
-            cancel();
+    };
+
+    const finishAttempt = (attempt: AttemptRecord, cancelTransport = false): void => {
+        if (!isCurrentAttempt(coordinator, attempt, disposed)) return;
+        const cancel = attempt.cancelToken;
+        const shouldCancel = cancelTransport && !!cancel && !attempt.cancelCalled;
+        if (shouldCancel) attempt.cancelCalled = true;
+        releaseAttempt(attempt);
+        try {
+            coordinator.finalize(attempt.identity);
+        } finally {
+            if (shouldCancel) {
+                try {
+                    cancel?.();
+                } catch {
+                    // The transport boundary owns this error; URLM still finalizes.
+                }
+            }
         }
-        coordinator.finalize(attempt.identity);
     };
 
     const start = (email: string, password: string, remember: boolean) => {
@@ -170,6 +188,9 @@ export const createLoginAdapter = (
                 } else if (facts.verificationRequired) {
                     dispatchOwned(attempt, { type: 'AUTH_LOST', identity: attempt.identity });
                 }
+                if (facts.authenticated || facts.verificationRequired || facts.malformed) {
+                    finishAttempt(attempt);
+                }
             },
             onError: (errors) => {
                 if (!isCurrentAttempt(coordinator, attempt, disposed)) return;
@@ -180,12 +201,17 @@ export const createLoginAdapter = (
                     ]),
                 );
                 dispatchOwned(attempt, { type: 'SERVER_VALIDATION', identity: attempt.identity, fieldErrors });
+                finishAttempt(attempt);
             },
-            onCancel: () => dispatchOwned(attempt, {
-                type: 'CANCEL',
-                identity: attempt.identity,
-                cause: 'transport',
-            }),
+            onCancel: () => {
+                if (!isCurrentAttempt(coordinator, attempt, disposed)) return;
+                dispatchOwned(attempt, {
+                    type: 'CANCEL',
+                    identity: attempt.identity,
+                    cause: 'transport',
+                });
+                releaseAttempt(attempt);
+            },
             onFinish: () => finishAttempt(attempt),
         };
 
@@ -220,6 +246,7 @@ export const createLoginAdapter = (
         if (disposed) return { kind: 'disposed' };
         if (!currentAttempt?.active) return { kind: 'not_active' };
         const result = coordinator.cancel('user');
+        if (result.kind === 'cancelled' && currentAttempt) releaseAttempt(currentAttempt);
         return result.kind === 'cancelled'
             ? { kind: 'cancelled' }
             : result.kind === 'already_terminal'
@@ -236,6 +263,7 @@ export const createLoginAdapter = (
         disposed = true;
         const hadActiveAttempt = currentAttempt?.active === true;
         coordinator.dispose();
+        if (currentAttempt?.active) releaseAttempt(currentAttempt);
         channelUnsubscribe?.();
         channelUnsubscribe = undefined;
         listeners.clear();

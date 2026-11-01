@@ -419,9 +419,18 @@ receiving the coordinator's typed joined result and no transport authority.
 
 The coordinator watchdog uses `profiles.authentication.timeoutMs` and the
 injected `TimerRegistry`. A no-callback visit enters `reconciling` and is
-finalized to `awaiting_outcome`; its exact transport token is cancelled only
-after ownership is cleared, so late cancellation/finish callbacks cannot
-replace or mutate a later lifecycle. No credential resend is possible.
+finalized to `awaiting_outcome`; adapter ownership is released before the
+exact transport token is cancelled, and token errors cannot skip finalization.
+Late cancellation/finish callbacks cannot replace or mutate a later lifecycle.
+No credential resend is possible. A throwing token is a transport-boundary
+limitation: the adapter cannot clean copies retained inside that third-party
+transport.
+
+Success and server-validation callbacks finalize their accepted terminal
+outcomes even when Inertia never calls `onFinish`. Explicit cancellation and
+disposal release adapter-local ownership even when the token supplies neither
+`onCancel` nor `onFinish`. A token that synchronously supplies both callbacks
+is guarded against recursive cancellation and is invoked at most once.
 
 Subscriptions immediately receive the current authoritative snapshot, isolate
 listener exceptions, support unsubscribe and reattach, and are detached from
@@ -430,6 +439,15 @@ boolean, verification-required boolean, guest boolean, and malformed boolean;
 raw props, user records, and identifiers are not retained. Verification
 navigation maps to the existing `AUTH_LOST` / `auth_required` contract and is
 not treated as dashboard arrival or proof that the session was lost.
+
+The focused regressions cover successive attempts on one adapter: a late
+callback or token from attempt A cannot alter attempt B. Separate adapters
+using the application registry are tested independently for active and
+awaiting-outcome joins; joined observers receive current and future owner
+snapshots but cannot cancel the owner's transport. The Node contract tests use
+plain JSON-like Inertia pages. Getter-throwing page input is contained as
+malformed; arbitrary third-party proxy behavior outside this boundary is not a
+browser or framework guarantee.
 
 The adapter deliberately does not consume Inertia's global `invalid` or
 `exception` events because core 2.3.26 does not provide originating visit

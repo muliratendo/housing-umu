@@ -162,8 +162,107 @@ describe('login adapter contract', () => {
         });
 
         expect(adapter.cancel()).toEqual({ kind: 'cancelled' });
-        expect(adapter.cancel()).toEqual({ kind: 'already_terminal' });
+        expect(adapter.cancel()).toEqual({ kind: 'not_active' });
         expect(cancelCount).toBe(1);
+    });
+
+    it('finalizes after a watchdog token throws and releases exact resources', () => {
+        vi.useFakeTimers();
+        const registry = new OperationRegistry();
+        const timers = new TimerRegistry();
+        const { adapter, visits } = (() => {
+            const captured: CapturedVisit[] = [];
+            return {
+                adapter: createLoginAdapter((url, options) => captured.push({ url, options }), registry, timers),
+                visits: captured,
+            };
+        })();
+        startVisit(adapter, visits).onCancelToken?.({
+            cancel: () => { throw new Error('secret-in-cancel-token'); },
+        });
+
+        vi.advanceTimersByTime(profiles.authentication.timeoutMs);
+
+        expect(adapter.getState()?.status).toBe('awaiting_outcome');
+        expect(adapter.getIdentity()).toBeDefined();
+        expect(registry.activeRecordCount()).toBe(0);
+        expect(registry.claimCount()).toBe(1);
+        expect(timers.has(adapter.getIdentity()!)).toBe(false);
+        expect(JSON.stringify(adapter.getState())).not.toContain('secret-in-cancel-token');
+        adapter.dispose();
+        expect(registry.claimCount()).toBe(0);
+    });
+
+    it('handles a token that synchronously delivers cancel and finish', () => {
+        const { adapter, visits } = captureVisit();
+        const options = startVisit(adapter, visits);
+        let cancelCount = 0;
+        options.onCancelToken?.({
+            cancel: () => {
+                cancelCount += 1;
+                options.onCancel?.();
+                options.onFinish?.({} as never);
+            },
+        });
+
+        expect(adapter.cancel()).toEqual({ kind: 'cancelled' });
+        expect(cancelCount).toBe(1);
+        expect(adapter.getState()?.status).toBe('cancelled');
+        expect(adapter.cancel()).toEqual({ kind: 'not_active' });
+    });
+
+    it('handles reentrant cancellation during disposal without leaking the attempt', () => {
+        const registry = new OperationRegistry();
+        const { adapter, visits } = (() => {
+            const captured: CapturedVisit[] = [];
+            return {
+                adapter: createLoginAdapter((url, options) => captured.push({ url, options }), registry, new TimerRegistry()),
+                visits: captured,
+            };
+        })();
+        const options = startVisit(adapter, visits);
+        let cancelCount = 0;
+        options.onCancelToken?.({
+            cancel: () => {
+                cancelCount += 1;
+                options.onCancel?.();
+                options.onFinish?.({} as never);
+            },
+        });
+
+        expect(adapter.dispose()).toEqual({ kind: 'cancelled' });
+        expect(cancelCount).toBe(1);
+        expect(adapter.getState()?.status).toBe('cancelled');
+        expect(registry.activeRecordCount()).toBe(0);
+    });
+
+    it('handles reentrant watchdog cancellation conservatively', () => {
+        vi.useFakeTimers();
+        const registry = new OperationRegistry();
+        const timers = new TimerRegistry();
+        const { adapter, visits } = (() => {
+            const captured: CapturedVisit[] = [];
+            return {
+                adapter: createLoginAdapter((url, options) => captured.push({ url, options }), registry, timers),
+                visits: captured,
+            };
+        })();
+        const options = startVisit(adapter, visits);
+        let cancelCount = 0;
+        options.onCancelToken?.({
+            cancel: () => {
+                cancelCount += 1;
+                options.onCancel?.();
+                options.onFinish?.({} as never);
+            },
+        });
+
+        vi.advanceTimersByTime(profiles.authentication.timeoutMs);
+
+        expect(cancelCount).toBe(1);
+        expect(adapter.getState()?.status).toBe('awaiting_outcome');
+        expect(registry.activeRecordCount()).toBe(0);
+        expect(timers.has(adapter.getIdentity()!)).toBe(false);
     });
 
     it('keeps transport classification alive after view detachment', () => {
@@ -231,51 +330,62 @@ describe('login adapter contract', () => {
         expect(applicationOperationRegistry.activeRecordCount()).toBe(0);
     });
 
-    it('keeps A cleanup from changing B after A completes and B starts', () => {
-        const registry = new OperationRegistry();
+    it('lets a joined observer follow an active owner without cancellation authority', () => {
         const visitsA: CapturedVisit[] = [];
         const visitsB: CapturedVisit[] = [];
-        const adapterA = createLoginAdapter((url, options) => visitsA.push({ url, options }), registry, new TimerRegistry());
-        const adapterB = createLoginAdapter((url, options) => visitsB.push({ url, options }), registry, new TimerRegistry());
+        const adapterA = createLoginAdapter((url, options) => visitsA.push({ url, options }));
+        const adapterB = createLoginAdapter((url, options) => visitsB.push({ url, options }));
+        expect(adapterA.start('student@example.test', 'secret-value', false).kind).toBe('started');
+        expect(adapterB.start('student@example.test', 'secret-value', false).kind).toBe('joined');
+        const states: string[] = [];
+        adapterB.subscribe((state) => states.push(state.status));
+        visitsA[0].options.onStart?.({} as never);
+        visitsA[0].options.onSuccess?.(page('Student/Dashboard', 42));
 
-        adapterA.start('a@example.test', 'a-secret', false);
-        const optionsA = visitsA[0].options;
-        optionsA.onStart?.({} as never);
-        optionsA.onSuccess?.(page('Student/Dashboard', 1));
-        adapterB.start('b@example.test', 'b-secret', false);
-        const optionsB = visitsB[0].options;
-        optionsA.onCancelToken?.({ cancel: () => undefined });
-        optionsA.onFinish?.({} as never);
-
-        expect(adapterB.getState()?.status).toBe('validating');
-        optionsB.onStart?.({} as never);
-        expect(adapterB.getState()?.status).toBe('submitting');
+        expect(states).toEqual(['validating', 'submitting', 'succeeded']);
+        expect(adapterB.cancel()).toEqual({ kind: 'not_active' });
+        adapterB.dispose();
         adapterA.dispose();
+    });
+
+    it('lets a joined observer follow an awaiting logical lifecycle to owner abandonment', () => {
+        const visitsA: CapturedVisit[] = [];
+        const visitsB: CapturedVisit[] = [];
+        const adapterA = createLoginAdapter((url, options) => visitsA.push({ url, options }));
+        const adapterB = createLoginAdapter((url, options) => visitsB.push({ url, options }));
+        expect(adapterA.start('student@example.test', 'secret-value', false).kind).toBe('started');
+        visitsA[0].options.onFinish?.({} as never);
+        expect(adapterA.getState()?.status).toBe('awaiting_outcome');
+        expect(adapterB.start('student@example.test', 'secret-value', false).kind).toBe('joined');
+        const states: string[] = [];
+        adapterB.subscribe((state) => states.push(state.status));
+
+        adapterA.dispose();
+
+        expect(states).toEqual(['awaiting_outcome', 'abandoned']);
+        expect(adapterB.cancel()).toEqual({ kind: 'not_active' });
         adapterB.dispose();
     });
 
-    it('does not let a late A token replace B token', () => {
-        const registry = new OperationRegistry();
-        const visitsA: CapturedVisit[] = [];
-        const visitsB: CapturedVisit[] = [];
-        const adapterA = createLoginAdapter((url, options) => visitsA.push({ url, options }), registry, new TimerRegistry());
-        const adapterB = createLoginAdapter((url, options) => visitsB.push({ url, options }), registry, new TimerRegistry());
-
-        adapterA.start('a@example.test', 'a-secret', false);
-        const optionsA = visitsA[0].options;
+    it('keeps late callbacks from attempt A from changing attempt B on one adapter', () => {
+        const { adapter, visits } = captureVisit();
+        adapter.start('a@example.test', 'a-secret', false);
+        const optionsA = visits[0].options;
         optionsA.onStart?.({} as never);
-        optionsA.onSuccess?.(page('Student/Dashboard', 1));
+        optionsA.onError?.({ email: 'Invalid credentials' });
         optionsA.onFinish?.({} as never);
-        adapterB.start('b@example.test', 'b-secret', false);
-        const optionsB = visitsB[0].options;
+        expect(adapter.start('b@example.test', 'b-secret', false).kind).toBe('started');
+        const optionsB = visits[1].options;
         let bCancelCount = 0;
         optionsB.onCancelToken?.({ cancel: () => { bCancelCount += 1; } });
-        optionsA.onCancelToken?.({ cancel: () => { throw new Error('stale token used'); } });
-
-        adapterB.cancel();
+        optionsA.onCancelToken?.({ cancel: () => { throw new Error('stale A token used'); } });
+        optionsA.onFinish?.({} as never);
+        optionsB.onStart?.({} as never);
+        expect(adapter.getState()?.status).toBe('submitting');
+        expect(bCancelCount).toBe(0);
+        adapter.cancel();
         expect(bCancelCount).toBe(1);
-        adapterA.dispose();
-        adapterB.dispose();
+        adapter.dispose();
     });
 
     it('enters conservative recovery when the visit never finishes', () => {
@@ -307,6 +417,59 @@ describe('login adapter contract', () => {
         adapter.dispose();
     });
 
+    it('keeps a staggered B watchdog pending at A deadline', () => {
+        vi.useFakeTimers();
+        const registryA = new OperationRegistry();
+        const registryB = new OperationRegistry();
+        const timersA = new TimerRegistry();
+        const timersB = new TimerRegistry();
+        const visitsA: CapturedVisit[] = [];
+        const visitsB: CapturedVisit[] = [];
+        const adapterA = createLoginAdapter((url, options) => visitsA.push({ url, options }), registryA, timersA);
+        const adapterB = createLoginAdapter((url, options) => visitsB.push({ url, options }), registryB, timersB);
+        adapterA.start('a@example.test', 'a-secret', false);
+        visitsA[0].options.onStart?.({} as never);
+        vi.advanceTimersByTime(10);
+        adapterB.start('b@example.test', 'b-secret', false);
+        visitsB[0].options.onStart?.({} as never);
+        let bCancelCount = 0;
+        visitsB[0].options.onCancelToken?.({ cancel: () => { bCancelCount += 1; } });
+
+        vi.advanceTimersByTime(profiles.authentication.timeoutMs - 10);
+        expect(adapterA.getState()?.status).toBe('awaiting_outcome');
+        expect(adapterB.getState()?.status).toBe('submitting');
+        expect(bCancelCount).toBe(0);
+
+        vi.advanceTimersByTime(10);
+        expect(adapterB.getState()?.status).toBe('awaiting_outcome');
+        expect(bCancelCount).toBe(1);
+        adapterA.dispose();
+        adapterB.dispose();
+    });
+
+    it('releases local resources when success, validation, or cancellation has no finish', () => {
+        const success = captureVisit();
+        const successOptions = startVisit(success.adapter, success.visits);
+        successOptions.onStart?.({} as never);
+        successOptions.onSuccess?.(page('Student/Dashboard', 42));
+        expect(success.adapter.start('student@example.test', 'secret-value', false).kind).toBe('started');
+        success.adapter.dispose();
+
+        const validation = captureVisit();
+        const validationOptions = startVisit(validation.adapter, validation.visits);
+        validationOptions.onStart?.({} as never);
+        validationOptions.onError?.({ email: 'Invalid credentials' });
+        expect(validation.adapter.start('student@example.test', 'secret-value', false).kind).toBe('started');
+        validation.adapter.dispose();
+
+        const cancelled = captureVisit();
+        const cancelledOptions = startVisit(cancelled.adapter, cancelled.visits);
+        cancelledOptions.onCancelToken?.({ cancel: () => undefined });
+        expect(cancelled.adapter.cancel()).toEqual({ kind: 'cancelled' });
+        expect(cancelled.adapter.start('student@example.test', 'secret-value', false).kind).toBe('started');
+        cancelled.adapter.dispose();
+    });
+
     it('delivers snapshots immediately, isolates listener faults, and supports reattach', () => {
         const { adapter, visits } = captureVisit();
         startVisit(adapter, visits);
@@ -331,5 +494,28 @@ describe('login adapter contract', () => {
 
         expect(adapter.getState()?.status).toBe('awaiting_outcome');
         adapter.dispose();
+    });
+
+    it('distinguishes a valid guest page from malformed facts and contains throwing input access', () => {
+        const guest = captureVisit();
+        const guestOptions = startVisit(guest.adapter, guest.visits);
+        guestOptions.onStart?.({} as never);
+        guestOptions.onSuccess?.(page('Auth/Login'));
+        expect(guest.adapter.getState()?.status).toBe('submitting');
+        guestOptions.onFinish?.({} as never);
+        expect(guest.adapter.getState()?.status).toBe('awaiting_outcome');
+        guest.adapter.dispose();
+
+        const malformed = captureVisit();
+        const malformedPage = { component: 'Student/Dashboard' } as Page;
+        Object.defineProperty(malformedPage, 'props', {
+            get: () => { throw new Error('raw response secret'); },
+        });
+        const malformedOptions = startVisit(malformed.adapter, malformed.visits);
+        malformedOptions.onStart?.({} as never);
+        expect(() => malformedOptions.onSuccess?.(malformedPage)).not.toThrow();
+        expect(malformed.adapter.getState()?.status).toBe('awaiting_outcome');
+        expect(JSON.stringify(malformed.adapter.getState())).not.toContain('raw response secret');
+        malformed.adapter.dispose();
     });
 });
