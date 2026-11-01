@@ -535,3 +535,43 @@ transport cancellation, or end-to-end reconciliation.
   These tests prove adapter logic only. They do not prove React lifecycle,
   browser navigation, Laravel middleware or CSRF behavior, transport
   exception attribution, or end-to-end authentication.
+
+  ## React integration test tooling — Commit 8331c80
+
+  Tooling setup is complete without enabling login integration. Exact
+  development dependencies are `@testing-library/react` 16.3.0,
+  `@testing-library/dom` 10.4.0, `@testing-library/user-event` 14.6.1, and
+  `jsdom` 26.1.0. They require Node 18 or newer and React Testing Library
+  accepts React/React DOM 18 or 19; the repository uses Node 22.23.3,
+  React/React DOM 18.3.1, Vitest 4.1.0, Vite 8.0.16, and TypeScript 6.0.3.
+  No framework or production dependency was upgraded.
+
+  The existing URLM suite remains isolated in the Node environment through
+  `vitest.config.ts`. React smoke tests use `vitest.react.config.ts`, a
+  jsdom environment, and a scoped cleanup setup. The smoke tests prove only
+  TSX rendering, accessible role/name queries, user-event typing/clicking/
+  submission, unmount cleanup, non-brittle StrictMode lifecycle cleanup, and
+  DOM isolation between tests. They do not prove login behavior, adapter
+  wiring, navigation, CSRF, cookies, Laravel authentication, or browser
+  accessibility.
+
+  Validation at baseline `8331c80419454d9db48a2a0693e971897a442eb7`:
+
+  | Command | Exit code | Result |
+  |---|---:|---|
+  | `npm run test:core` | 0 | 4 files, 76 passed |
+  | `npm run test:react` | 0 | 1 file, 3 passed |
+  | `npm run test:all` | 0 | 79 passed |
+  | `npm run typecheck:urlm` | 0 | Passed |
+  | `npm run typecheck:react-tests` | 0 | Passed |
+  | `npm run typecheck` | 2 | Pre-existing `FooterLinks.patch.tsx` JSX error |
+  | `npm run build` | 0 | Passed |
+  | `git diff --check` | 0 | Passed |
+
+  npm reported 29 existing audit findings after installation; no automated
+  audit remediation was run. The remaining Inertia global `invalid` and
+  `exception` response-display/security gate requires runtime attribution
+  design and is not solved by jsdom tooling.
+
+  **React integration test tooling configured and verified. Login integration
+  has not started.**
