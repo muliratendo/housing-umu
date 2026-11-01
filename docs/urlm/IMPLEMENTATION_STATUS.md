@@ -461,3 +461,21 @@ transport cancellation, or end-to-end reconciliation.
   React-to-Inertia-to-Laravel flow, installed Inertia callback semantics,
   adapter ownership, authentication test matrix, Sail/MySQL prerequisites,
   rollback, and excluded scope. No Phase 2 implementation has started.
+
+  The finalized planning contract references the existing
+  `profiles.authentication` (`retry: never`, `repeatSafety: never`,
+  `concurrency: single_flight`, `retryBudget: 0`) and does not introduce the
+  different repeat-safety value. Installed evidence records
+  `@inertiajs/react` 2.3.26, `@inertiajs/core` 2.3.26, and
+  `inertiajs/inertia-laravel` 2.0.24. In core 2.3.26, validation errors invoke
+  per-visit `onError`; network/server exceptions use global `exception`;
+  non-Inertia responses use global `invalid`; cancellation calls `onCancel`
+  before cleanup `onFinish`; and page replacement precedes `onSuccess`.
+  These are planning facts, not implementation verification.
+
+  The finalized contract also records the core 2.3.26 limitation that global
+  `invalid` and `exception` payloads do not include originating visit identity.
+  No adapter may intercept unrelated visits or classify those paths without a
+  separately specified attribution mechanism. The plan therefore leaves that
+  classification as an explicit verification prerequisite rather than assuming
+  that per-visit `onError` covers transport failures.
