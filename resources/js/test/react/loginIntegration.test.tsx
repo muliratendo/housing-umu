@@ -159,6 +159,17 @@ describe('login React/adapter integration', () => {
         expect(legacyRuns).toHaveLength(0);
     });
 
+    it('uses exactly one legacy handler for a valid default-mode submission', async () => {
+        const user = userEvent.setup();
+        render(<Login adapterRegistry={new OperationRegistry()} />);
+        await fillValidForm(user);
+
+        await user.click(screen.getByRole('button', { name: 'Log in' }));
+
+        expect(legacyRuns).toHaveLength(1);
+        expect(visits).toHaveLength(0);
+    });
+
     it('sends exactly one visit and exposes accessible pending feedback for duplicate submits', async () => {
         const user = userEvent.setup();
         renderLogin();
@@ -169,9 +180,38 @@ describe('login React/adapter integration', () => {
         await user.click(button);
 
         expect(visits).toHaveLength(1);
-        visits[0].options.onStart?.({} as never);
+        act(() => visits[0].options.onStart?.({} as never));
         await waitFor(() => expect(screen.getByRole('form', { name: 'Sign in form' }).getAttribute('aria-busy')).toBe('true'));
-        visits[0].options.onError?.({ email: 'Invalid credentials' });
+        act(() => {
+            visits[0].options.onError?.({ email: 'Invalid credentials' });
+            visits[0].options.onFinish?.({} as never);
+        });
+    });
+
+    it('does not latch recovery when a duplicate pending submit is already owned', async () => {
+        const user = userEvent.setup();
+        renderLogin();
+        await fillValidForm(user);
+
+        await user.click(screen.getByRole('button', { name: 'Log in' }));
+        fireEvent.submit(screen.getByRole('form', { name: 'Sign in form' }));
+
+        expect(visits).toHaveLength(1);
+        act(() => visits[0].options.onStart?.({} as never));
+        expect((screen.getByRole('button', { name: /Logging in/ }) as HTMLButtonElement).disabled).toBe(true);
+
+        act(() => {
+            visits[0].options.onError?.({ email: 'Invalid credentials' });
+            visits[0].options.onFinish?.({} as never);
+        });
+        await waitFor(() => expect(screen.getByText('Invalid credentials')).toBeTruthy());
+
+        await user.clear(screen.getByRole('textbox', { name: 'University email' }));
+        await user.type(screen.getByRole('textbox', { name: 'University email' }), 'corrected@example.test');
+        await user.type(screen.getByLabelText('Password'), 'corrected-secret');
+        await user.click(screen.getByRole('button', { name: 'Log in' }));
+
+        expect(visits).toHaveLength(2);
     });
 
     it('renders scoped server validation and permits a fresh explicit submission', async () => {
@@ -180,9 +220,11 @@ describe('login React/adapter integration', () => {
         await fillValidForm(user);
         await user.click(screen.getByRole('button', { name: 'Log in' }));
 
-        visits[0].options.onStart?.({} as never);
-        visits[0].options.onError?.({ email: 'Invalid credentials' });
-        visits[0].options.onFinish?.({} as never);
+        act(() => {
+            visits[0].options.onStart?.({} as never);
+            visits[0].options.onError?.({ email: 'Invalid credentials' });
+            visits[0].options.onFinish?.({} as never);
+        });
         await waitFor(() => expect(screen.getByText('Invalid credentials')).toBeTruthy());
         await waitFor(() => expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(''));
 
@@ -190,9 +232,11 @@ describe('login React/adapter integration', () => {
         await user.click(screen.getByRole('button', { name: 'Log in' }));
 
         expect(visits).toHaveLength(2);
-        visits[1].options.onStart?.({} as never);
-        visits[1].options.onError?.({ email: 'Invalid credentials' });
-        visits[1].options.onFinish?.({} as never);
+        act(() => {
+            visits[1].options.onStart?.({} as never);
+            visits[1].options.onError?.({ email: 'Invalid credentials' });
+            visits[1].options.onFinish?.({} as never);
+        });
     });
 
     it('does not turn successful navigation into cancellation and clears the password', async () => {
@@ -202,10 +246,12 @@ describe('login React/adapter integration', () => {
         await user.click(screen.getByRole('button', { name: 'Log in' }));
 
         let cancelCount = 0;
-        visits[0].options.onCancelToken?.({ cancel: () => { cancelCount += 1; } });
-        visits[0].options.onStart?.({} as never);
-        visits[0].options.onSuccess?.(page('Student/Dashboard', 42));
-        visits[0].options.onFinish?.({} as never);
+        act(() => {
+            visits[0].options.onCancelToken?.({ cancel: () => { cancelCount += 1; } });
+            visits[0].options.onStart?.({} as never);
+            visits[0].options.onSuccess?.(page('Student/Dashboard', 42));
+            visits[0].options.onFinish?.({} as never);
+        });
 
         expect(cancelCount).toBe(0);
         await waitFor(() => expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(''));
@@ -217,24 +263,29 @@ describe('login React/adapter integration', () => {
         await fillValidForm(user);
         await user.click(screen.getByRole('button', { name: 'Log in' }));
         const first = visits[0].options;
-        first.onStart?.({} as never);
-        first.onError?.({ email: 'Invalid credentials' });
-        first.onFinish?.({} as never);
+        act(() => {
+            first.onStart?.({} as never);
+            first.onError?.({ email: 'Invalid credentials' });
+            first.onFinish?.({} as never);
+        });
 
         await user.clear(screen.getByRole('textbox', { name: 'University email' }));
         await user.type(screen.getByRole('textbox', { name: 'University email' }), 'fresh@example.test');
         await user.type(screen.getByLabelText('Password'), 'fresh-secret');
         await waitFor(() => expect(screen.queryByText('Invalid credentials')).toBeNull());
-        await user.click(screen.getByRole('button', { name: 'Log in' }));
+        fireEvent.submit(screen.getByRole('form', { name: 'Sign in form' }));
         const second = visits[1].options;
-        second.onStart?.({} as never);
-        first.onSuccess?.(page('Student/Dashboard', 99));
+        act(() => {
+            first.onSuccess?.(page('Student/Dashboard', 99));
+        });
 
         expect(screen.queryByText('Your account requires verification before you can continue.')).toBeNull();
+        expect(screen.getByRole('form', { name: 'Sign in form' }).getAttribute('aria-busy')).toBe('true');
         expect(visits).toHaveLength(2);
-        second.onStart?.({} as never);
-        second.onError?.({ email: 'Invalid credentials' });
-        second.onFinish?.({} as never);
+        act(() => {
+            second.onError?.({ email: 'Invalid credentials' });
+            second.onFinish?.({} as never);
+        });
     });
 
     it('keeps transport classification alive when the view detaches before success', async () => {
@@ -246,12 +297,14 @@ describe('login React/adapter integration', () => {
         await fillValidForm(user);
         await user.click(screen.getByRole('button', { name: 'Log in' }));
         const options = visits[0].options;
-        options.onStart?.({} as never);
+        act(() => options.onStart?.({} as never));
         options.onCancelToken?.({ cancel: () => { throw new Error('successful navigation was cancelled'); } });
         unmount();
 
-        options.onSuccess?.(page('Student/Dashboard', 42));
-        options.onFinish?.({} as never);
+        act(() => {
+            options.onSuccess?.(page('Student/Dashboard', 42));
+            options.onFinish?.({} as never);
+        });
 
         expect(registry.activeRecordCount()).toBe(0);
         expect(registry.terminalSnapshotCount()).toBe(1);
@@ -268,8 +321,10 @@ describe('login React/adapter integration', () => {
         await user.click(screen.getByRole('button', { name: 'Log in' }));
 
         expect(visits).toHaveLength(1);
-        visits[0].options.onError?.({ email: 'Invalid credentials' });
-        visits[0].options.onFinish?.({} as never);
+        act(() => {
+            visits[0].options.onError?.({ email: 'Invalid credentials' });
+            visits[0].options.onFinish?.({} as never);
+        });
     });
 
     it('shows recovery after finish without a classified outcome', async () => {
@@ -277,8 +332,10 @@ describe('login React/adapter integration', () => {
         renderLogin();
         await fillValidForm(user);
         await user.click(screen.getByRole('button', { name: 'Log in' }));
-        visits[0].options.onStart?.({} as never);
-        visits[0].options.onFinish?.({} as never);
+        act(() => {
+            visits[0].options.onStart?.({} as never);
+            visits[0].options.onFinish?.({} as never);
+        });
 
         const recovery = await waitFor(() =>
             screen.getByRole('link', { name: 'Refresh sign-in page' }),

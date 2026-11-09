@@ -655,21 +655,86 @@ transport cancellation, or end-to-end reconciliation.
   authentication, Inertia response rendering, or browser accessibility
   compliance.
 
-  The current working-tree integration validation is:
+  The earlier 11-test working-tree result is historical and superseded by the
+  current status below.
 
-  | Command | Exit code | Result |
-  |---|---:|---|
-  | `npm run test:react` | 0 | 2 files, 11 passed |
+## Current Phase 2B status — 2026-11-09, authoritative
 
-  The remaining required matrix (core tests, combined tests, typechecks,
-  production build, and repository-wide checks) must be rerun after this
-  uncommitted integration change. Repository-wide typecheck is expected to
-  retain the unrelated `FooterLinks.patch.tsx` JSX blocker. The installed
-  Inertia 2.3.26 global `invalid` and `exception` events remain unattributed
-  to a specific login visit, so runtime response-display security readiness is
-  unresolved. Server role naming, unverified-login policy, browser behavior,
-  and production enablement remain outside this pass.
+The login integration is **partial and disabled by default**. The explicit
+`integration="urlm"` prop selects it; the normal default remains
+`integration="legacy"`. No query string, hidden flag, or normal application
+composition enables URLM login.
 
-  **Login code implemented behind a disabled boundary; React integration
-  evidence is passing; runtime security readiness and Laravel/browser
-  acceptance are not established. Login remains disabled for normal use.**
+The pending duplicate-submit concern was reproduced as a fixture limitation,
+not as a transport-ownership defect: after the first submit, the rendered
+button becomes disabled and is named “Logging in”. The regression now submits
+the form directly while pending. The adapter returns `already_active` for the
+same adapter attempt, starts no second visit, and the original
+`onStart -> onError -> onFinish` sequence permits corrected credentials to be
+submitted. The presentation latch no longer treats `already_owner` as an
+unknown outcome; unresolved adapter states alone retain the recovery lock.
+
+Current ownership:
+
+- `useForm` owns draft email, password, remember, and legacy submission state.
+- The URLM adapter owns selected-path transport lifecycle and classification.
+- URLM adapter field errors are authoritative for the selected URLM visit;
+  React owns current presentation and hides an edited field's stale message
+  without mutating the historical outcome.
+- URLM owns pending, unresolved-outcome, recovery, and password-clearing
+  presentation for the selected path.
+- React detaches only its view subscription on unmount; it does not dispose an
+  active or unresolved transport.
+
+Current validation after the correction: 12 login integration tests plus 3
+tooling smoke tests, 15 React tests total. The tests use the real login page,
+adapter, coordinator, reducer, registry, and `ErrorState` recovery component;
+only Inertia transport and unrelated layout/UI dependencies are mocked. They
+do not prove browser navigation, cookies, CSRF, Laravel authentication,
+Inertia response rendering, or browser accessibility compliance.
+
+## Inertia 2.3.26 response-display security design — read-only
+
+Installed source evidence is in
+`node_modules/@inertiajs/core/dist/index.js`:
+
+- `fireExceptionEvent` creates a cancelable global `inertia:exception` event
+  whose detail contains only `{ exception }` (lines 129-130).
+- `fireInvalidEvent` creates a cancelable global `inertia:invalid` event whose
+  detail contains `{ response }` (lines 135-136).
+- `Response.process()` runs request callbacks, rejects non-Inertia responses to
+  `handleNonInertiaResponse()`, then calls `setPage()` before inspecting page
+  errors and invoking `onError` or `onSuccess` (lines 2037-2060).
+- `handleNonInertiaResponse()` fires `invalid`; if not canceled, it displays
+  the response body through the built-in modal or dialog (lines 2073-2085).
+  The modal builds an iframe with `srcdoc` from response data and targets links
+  to `_top` (lines 1911-1964).
+- Network/exception rejection fires `exception`; if not canceled, the error is
+  re-rejected (lines 2357-2371). `finally()` then calls `finish()` (lines
+  2373-2393).
+- Cancellation invokes the request `onCancel`, marks the request canceled, and
+  fires finish events; finished requests do not fire them again (lines
+  2395-2400).
+
+Current application wiring in `resources/js/app.tsx:23-37` calls
+`createInertiaApp` with page resolution, React root setup, and progress
+configuration only. It registers no global `invalid` or `exception` handlers.
+
+Design evaluation:
+
+| Option | Installed-API feasibility | Scope/risk | Credentials/raw bodies | Required tests/approval |
+|---|---|---|---|---|
+| A. Per-visit handling | `onError`, `onSuccess`, `onCancel`, and `onFinish` are available, but non-Inertia `invalid` and network `exception` have no originating visit identity. Not safely attributable. | Cannot prevent the default display for only login without global attribution; a guessed “pending login” association could suppress unrelated requests. | Per-visit callbacks do not receive the non-Inertia HTML body; global events expose response/exception data and must not log it. | Requires an attribution mechanism and focused transport tests; not feasible within current scope. |
+| B. Application-wide display policy | `router.on('invalid')`/`router.on('exception')` or document listeners can cancel/default-handle globally. | Affects every Inertia request; suppressing unrelated server errors or session/CSRF failures is a broad behavior change. | Must prevent raw response HTML and exception details from reaching UI/logs; cannot be login-specific by pending state. | Requires app-wide policy tests for login, unrelated visits, session expiry, CSRF, and unexpected errors; separate global-application approval. |
+| C. Server response normalization | Laravel can ensure login responses are valid Inertia redirects/errors, but non-Inertia failures, auth/session expiry, CSRF, and unexpected exceptions still require a consistent server policy. | Changes authentication and global response behavior; validation, redirects, error rendering, and exception handling are affected. | Server normalization can avoid raw HTML in normal login responses, but exception rendering/logging policy remains server-owned. | Requires Laravel feature tests and response-contract tests; separate Laravel approval. |
+
+Recommendation: no option is safe to implement in this disabled-login
+correction. Keep response-display prevention separate from operation
+attribution. The smallest defensible next boundary is a separately approved
+application-wide Inertia response policy, paired with Laravel response
+normalization and tests for unrelated visits, authentication/session expiry,
+CSRF, validation, and unexpected errors. No global listener, preventDefault
+handler, server rendering change, or new transport behavior was implemented.
+
+**Login remains disabled. No Laravel/global response policy, dependency,
+accepted-core, database, deployment, commit, or push change was made.**

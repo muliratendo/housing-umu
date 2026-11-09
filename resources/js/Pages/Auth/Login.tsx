@@ -158,7 +158,7 @@ export default function Login({
     if (isUrlmIntegration) {
       if (!loginAdapter) return;
       const result = loginAdapter.start(data.email, data.password, data.remember);
-      setUrlmBlocked(result.kind === 'blocked' || result.kind === 'queued' || result.kind === 'already_owner');
+      setUrlmBlocked(result.kind === 'blocked' || result.kind === 'queued');
     } else {
       silentFailure.run();
     }
