@@ -77,13 +77,17 @@ export default function Login({
   );
 
   const [submitted, setSubmitted] = useState(false);
-  const validationError = classifyError({ status: 422 });
-  const loginAdapter = useMemo<LoginAdapter>(
-    () => createLoginAdapter((url, options) => router.visit(url, options), adapterRegistry),
-    [adapterRegistry],
-  );
-  const [adapterState, setAdapterState] = useState(() => loginAdapter.getState());
+  const [editedFields, setEditedFields] = useState<Set<LoginField>>(new Set());
+  const [urlmBlocked, setUrlmBlocked] = useState(false);
   const isUrlmIntegration = integration === 'urlm';
+  const validationError = classifyError({ status: 422 });
+  const loginAdapter = useMemo<LoginAdapter | undefined>(
+    () => isUrlmIntegration
+      ? createLoginAdapter((url, options) => router.visit(url, options), adapterRegistry)
+      : undefined,
+    [adapterRegistry, isUrlmIntegration],
+  );
+  const [adapterState, setAdapterState] = useState(() => loginAdapter?.getState());
 
   // FIX: a throttle/lockout message must survive keystrokes — Laravel is the
   // sole authority on whether the wait has actually expired. We detect it by
@@ -96,6 +100,7 @@ export default function Login({
   const isThrottled = isThrottleMessage(errors.email);
 
   useEffect(() => {
+    if (!loginAdapter) return;
     const unsubscribe = loginAdapter.subscribe(setAdapterState);
     return () => {
       unsubscribe();
@@ -110,6 +115,12 @@ export default function Login({
       reset('password');
     }
   }, [adapterState?.status, isUrlmIntegration, reset]);
+
+  useEffect(() => {
+    if (adapterState?.status === 'validation_failed') {
+      setEditedFields(new Set());
+    }
+  }, [adapterState?.status]);
 
   useEffect(() => {
     return () => {
@@ -145,7 +156,9 @@ export default function Login({
     if (!guard.isValid) return;
 
     if (isUrlmIntegration) {
-      loginAdapter.start(data.email, data.password, data.remember);
+      if (!loginAdapter) return;
+      const result = loginAdapter.start(data.email, data.password, data.remember);
+      setUrlmBlocked(result.kind === 'blocked' || result.kind === 'queued' || result.kind === 'already_owner');
     } else {
       silentFailure.run();
     }
@@ -160,6 +173,7 @@ export default function Login({
   const updateField = (field: LoginField, value: string) => {
     guard.setValue(field, value);
     setData(field, value);
+    setEditedFields((current) => new Set(current).add(field));
 
     if (!isUrlmIntegration && errors[field] &&
       !(field === 'email' && isThrottleMessage(errors.email))) {
@@ -168,7 +182,10 @@ export default function Login({
   };
 
   const urlmFieldErrors = adapterState?.status === 'validation_failed'
-    ? adapterState.fieldErrors
+    ? Object.fromEntries(
+      Object.entries(adapterState.fieldErrors)
+        .filter(([field]) => !editedFields.has(field as LoginField)),
+    )
     : {};
   const fieldErrors = isUrlmIntegration ? urlmFieldErrors : errors;
   const hasCredentialError = submitted && Boolean(fieldErrors.email || fieldErrors.password);
@@ -177,6 +194,7 @@ export default function Login({
   const urlmUnknown = isUrlmIntegration &&
     (adapterState?.status === 'awaiting_outcome' || adapterState?.status === 'reconciling');
   const isBusy = isUrlmIntegration ? urlmPending : processing || silentFailure.isRunning;
+  const urlmRecoveryRequired = urlmUnknown || urlmBlocked;
   const emailServerError = Array.isArray(fieldErrors.email)
     ? fieldErrors.email[0]
     : fieldErrors.email;
@@ -221,7 +239,7 @@ export default function Login({
           />
         )}
 
-        {isUrlmIntegration && urlmUnknown && (
+        {isUrlmIntegration && urlmRecoveryRequired && (
           <ErrorState
             component="auth.login.recovery"
             userFlow="guest"
@@ -323,7 +341,7 @@ export default function Login({
             </p>
           )}
 
-          <Button type="submit" className="w-full" disabled={isBusy || !guard.isValid}>
+          <Button type="submit" className="w-full" disabled={isBusy || urlmRecoveryRequired || !guard.isValid}>
             {isBusy ? (
               <>
                 <LoadingIndicator

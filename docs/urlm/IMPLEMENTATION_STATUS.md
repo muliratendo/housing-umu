@@ -576,6 +576,45 @@ transport cancellation, or end-to-end reconciliation.
   **React integration test tooling configured and verified. Login integration
   has not started.**
 
+  ## Phase 2B recovery verification — commit 87454eb
+
+  The login integration remains **partial and disabled by default**. The
+  explicit `integration="urlm"` prop selects it; the default remains the
+  legacy path. No normal application composition, query string, or hidden
+  flag enables URLM login.
+
+  The earlier 11-React-test result is retained only as a historical result
+  from the interrupted validation attempt. It was not treated as fresh proof
+  until reproduced.   The required reproduction succeeded on 2026-11-09:
+  the React suite now has 13 passing tests (10 login integration tests and 3
+  tooling smoke tests). The corrected fixtures use the installed Inertia
+  rejection sequence `onStart -> onError -> onFinish`, separately test finish
+  without a classified outcome, and test no-finish watchdog recovery with
+  fake timers. Manual callbacks are delivered under `act()` where they update
+  React.
+
+  Ownership is:
+
+  - `useForm` owns draft email, password, remember, and legacy submission
+    state.
+  - The URLM adapter owns the selected-path transport lifecycle and
+    classification.
+  - URLM adapter field errors are the authoritative response for the selected
+    URLM visit; React owns their current presentation and hides an edited
+    field's stale message without changing the historical outcome.
+  - URLM owns pending, unresolved-outcome, recovery, and password-clearing
+    presentation for the selected path. An unresolved outcome disables submit
+    and keeps a normal `GET /login` anchor available.
+  - The adapter receives `router.visit`; React detaches only its view
+    subscription on unmount, preserving transport classification.
+
+  The current status is **React verification demonstrated for the bounded
+  jsdom cases**, but runtime security readiness and Laravel/browser
+  acceptance remain unestablished. The Inertia 2.3.26 global `invalid` and
+  `exception` events remain unattributed to a specific login visit, so the
+  response-display security gate is unresolved. The tests do not prove real
+  navigation, cookies, CSRF, Laravel authentication, or browser accessibility.
+
   ## Phase 2B Login Integration — disabled by default
 
   The current working-tree integration is selected only by the explicit
@@ -600,17 +639,21 @@ transport cancellation, or end-to-end reconciliation.
     presentation for the selected path. Unknown outcomes expose a normal
     `GET /login` recovery link and never replay credentials.
 
-  The focused React suite has 8 login integration tests, and the tooling suite
-  has 3 smoke tests: 11 React tests total. The tests use the real login page,
-  adapter, coordinator, reducer, and registry while narrowly mocking Inertia
-  transport and unrelated layout/UI dependencies. They demonstrate invalid
-  submission without a visit, one visit for duplicate submission, accessible
-  pending state, scoped validation and a fresh rejection submission, password
-  clearing after outcomes, successful navigation not becoming cancellation,
-  same-instance stale-callback isolation, StrictMode transport ownership,
-  view detachment before success, and persistent no-finish recovery guidance.
-  They do not prove browser navigation, cookies, CSRF, Laravel authentication,
-  Inertia response rendering, or browser accessibility compliance.
+  The earlier 8-login-test/11-total result is historical and superseded. The
+  current focused React suite has 10 login integration tests, and the tooling
+  suite has 3 smoke tests: 13 React tests total. The tests use the real login
+  page, adapter, coordinator, reducer, registry, and recovery presentation
+  component while narrowly mocking Inertia transport and unrelated
+  layout/UI dependencies. They demonstrate invalid submission without a
+  visit, one visit for duplicate submission, accessible pending state,
+  scoped validation and a fresh rejection submission, edited-field stale
+  feedback dismissal, password clearing after outcomes, successful navigation
+  not becoming cancellation, same-instance stale-callback isolation,
+  StrictMode transport ownership, view detachment before success, and
+  recovery after both finish-without-outcome and actual no-finish watchdog
+  expiry. They do not prove browser navigation, cookies, CSRF, Laravel
+  authentication, Inertia response rendering, or browser accessibility
+  compliance.
 
   The current working-tree integration validation is:
 

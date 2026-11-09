@@ -1,7 +1,7 @@
 import { StrictMode, useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 import type * as React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Page, VisitOptions } from '@inertiajs/core';
@@ -14,6 +14,7 @@ type CapturedVisit = {
 };
 
 const visits: CapturedVisit[] = [];
+const legacyRuns: number[] = [];
 
 vi.mock('@inertiajs/react', () => ({
     Head: () => null,
@@ -102,24 +103,6 @@ vi.mock('@/components/states/LoadingIndicator', () => ({
     LoadingIndicator: ({ label }: { label: string }) => <span>{label}</span>,
 }));
 vi.mock('@/components/states/SuccessState', () => ({ SuccessState: () => null }));
-vi.mock('@/components/states/ErrorState', () => ({
-    ErrorState: ({
-        userMessage,
-        primaryAction,
-    }: {
-        userMessage: string;
-        primaryAction?: { label: string; href?: string; onClick?: () => void };
-    }) => (
-        <div role="alert">
-            {userMessage}
-            {primaryAction?.href ? (
-                <a href={primaryAction.href}>{primaryAction.label}</a>
-            ) : primaryAction ? (
-                <button type="button" onClick={primaryAction.onClick}>{primaryAction.label}</button>
-            ) : null}
-        </div>
-    ),
-}));
 vi.mock('@/lib/classifyError', () => ({
     classifyError: () => ({ reasonCode: 'VALIDATION_FAILED', placement: 'inline' }),
 }));
@@ -127,7 +110,7 @@ vi.mock('@/components/states/StaleFailureGuard', () => ({
     useSilentFailureGuard: () => ({
         isRunning: false,
         suspectedSilentFailure: false,
-        run: vi.fn(),
+        run: vi.fn(() => legacyRuns.push(legacyRuns.length + 1)),
         resubmit: vi.fn(),
     }),
 }));
@@ -157,16 +140,23 @@ const renderLogin = () => render(
 describe('login React/adapter integration', () => {
     afterEach(() => {
         visits.length = 0;
+        legacyRuns.length = 0;
     });
 
     it('sends no POST for client-invalid input', async () => {
-        const user = userEvent.setup();
         renderLogin();
 
         fireEvent.submit(screen.getByRole('form', { name: 'Sign in form' }));
 
         expect(visits).toHaveLength(0);
         expect(screen.getByText('Complete your email and password before logging in.')).toBeTruthy();
+    });
+
+    it('keeps the legacy path selected and does not attach URLM transport by default', () => {
+        render(<Login adapterRegistry={new OperationRegistry()} />);
+        fireEvent.submit(screen.getByRole('form', { name: 'Sign in form' }));
+        expect(visits).toHaveLength(0);
+        expect(legacyRuns).toHaveLength(0);
     });
 
     it('sends exactly one visit and exposes accessible pending feedback for duplicate submits', async () => {
@@ -192,6 +182,7 @@ describe('login React/adapter integration', () => {
 
         visits[0].options.onStart?.({} as never);
         visits[0].options.onError?.({ email: 'Invalid credentials' });
+        visits[0].options.onFinish?.({} as never);
         await waitFor(() => expect(screen.getByText('Invalid credentials')).toBeTruthy());
         await waitFor(() => expect((screen.getByLabelText('Password') as HTMLInputElement).value).toBe(''));
 
@@ -199,6 +190,8 @@ describe('login React/adapter integration', () => {
         await user.click(screen.getByRole('button', { name: 'Log in' }));
 
         expect(visits).toHaveLength(2);
+        visits[1].options.onStart?.({} as never);
+        visits[1].options.onError?.({ email: 'Invalid credentials' });
         visits[1].options.onFinish?.({} as never);
     });
 
@@ -226,8 +219,12 @@ describe('login React/adapter integration', () => {
         const first = visits[0].options;
         first.onStart?.({} as never);
         first.onError?.({ email: 'Invalid credentials' });
+        first.onFinish?.({} as never);
 
+        await user.clear(screen.getByRole('textbox', { name: 'University email' }));
+        await user.type(screen.getByRole('textbox', { name: 'University email' }), 'fresh@example.test');
         await user.type(screen.getByLabelText('Password'), 'fresh-secret');
+        await waitFor(() => expect(screen.queryByText('Invalid credentials')).toBeNull());
         await user.click(screen.getByRole('button', { name: 'Log in' }));
         const second = visits[1].options;
         second.onStart?.({} as never);
@@ -235,7 +232,9 @@ describe('login React/adapter integration', () => {
 
         expect(screen.queryByText('Your account requires verification before you can continue.')).toBeNull();
         expect(visits).toHaveLength(2);
+        second.onStart?.({} as never);
         second.onError?.({ email: 'Invalid credentials' });
+        second.onFinish?.({} as never);
     });
 
     it('keeps transport classification alive when the view detaches before success', async () => {
@@ -273,7 +272,7 @@ describe('login React/adapter integration', () => {
         visits[0].options.onFinish?.({} as never);
     });
 
-    it('preserves a no-finish unknown outcome with explicit GET recovery', async () => {
+    it('shows recovery after finish without a classified outcome', async () => {
         const user = userEvent.setup();
         renderLogin();
         await fillValidForm(user);
@@ -286,5 +285,29 @@ describe('login React/adapter integration', () => {
         );
         expect(recovery.getAttribute('href')).toBe('/login');
         expect(visits).toHaveLength(1);
+    });
+
+    it('shows recovery after no finish when the actual watchdog expires', async () => {
+        vi.useFakeTimers();
+        try {
+            renderLogin();
+            fireEvent.change(screen.getByRole('textbox', { name: 'University email' }), {
+                target: { value: 'student@example.test' },
+            });
+            fireEvent.change(screen.getByLabelText('Password'), {
+                target: { value: 'secret-value' },
+            });
+            fireEvent.submit(screen.getByRole('form', { name: 'Sign in form' }));
+            act(() => visits[0].options.onStart?.({} as never));
+
+            act(() => {
+                vi.advanceTimersByTime(15_000);
+            });
+
+            expect(screen.getByRole('link', { name: 'Refresh sign-in page' }).getAttribute('href')).toBe('/login');
+            expect((screen.getByRole('button', { name: 'Log in' }) as HTMLButtonElement).disabled).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
