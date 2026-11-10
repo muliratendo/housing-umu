@@ -12,6 +12,7 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { route } from 'ziggy-js';
 // 2. Import your freshly generated static routes configuration file
 import { Ziggy } from './ziggy';
+import { installInertiaResponseDisplayBoundary } from './lib/inertiaResponseDisplayBoundary';
 
 // 3. Bind it globally, passing your routes file context into the initialization loop
 window.route = (name: any, params: any, absolute: any, config: any) =>
@@ -19,6 +20,8 @@ window.route = (name: any, params: any, absolute: any, config: any) =>
 
 const appName =
   window.document.getElementsByTagName('title')[0]?.innerText || 'HOusing@UMU';
+
+installInertiaResponseDisplayBoundary();
 
 createInertiaApp({
   title: (title) => (title ? `${title} | Housing@UMU` : 'Housing@UMU'),

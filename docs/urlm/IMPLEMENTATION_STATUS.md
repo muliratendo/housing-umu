@@ -738,3 +738,63 @@ handler, server rendering change, or new transport behavior was implemented.
 
 **Login remains disabled. No Laravel/global response policy, dependency,
 accepted-core, database, deployment, commit, or push change was made.**
+
+## Application-wide Inertia response display boundary — 2026-11-10
+
+The frontend-only boundary is implemented in
+`resources/js/lib/inertiaResponseDisplayBoundary.ts` and installed once before
+`createInertiaApp()` in `resources/js/app.tsx`. It registers only the
+cancelable global `invalid` listener. The listener calls `preventDefault()` and
+renders one fixed, keyboard-focusable `role="alert"` containing only:
+
+> We received an unexpected response. The request result may not be confirmed.
+
+It never reads, serializes, logs, or renders response data, headers, request
+payloads, credentials, cookies, or exception values. Installation is
+singleton-safe and returns explicit teardown; teardown removes only this
+listener and its owned alert. No URLM adapter lifecycle or operation state is
+read or changed. No retry, redirect, reload, or credential replay occurs.
+
+Installed Inertia 2.3.26 source evidence:
+
+- `node_modules/@inertiajs/core/dist/index.js:129-136` creates cancelable
+  global `exception` and `invalid` events.
+- `:2037-2060` runs callbacks, then `setPage()`, then invokes `onError` for
+  page errors or `onSuccess` for a successful Inertia page.
+- `:2073-2085` handles non-Inertia responses: `X-Inertia-Location` 409
+  responses take the external-location path; other responses fire `invalid`
+  and, if not canceled, pass the body to the built-in modal/dialog.
+- `:1911-1964` shows that built-in display constructs an iframe and assigns
+  response-derived content to `srcdoc`; this is the exact path suppressed.
+- `:2357-2378` fires `exception`, preserves rejection when uncanceled, and
+  finishes in `finally`; `:2380-2400` preserves cancellation and finish
+  ordering.
+
+The boundary tests use the installed Inertia event handler and real DOM. They
+verify invalid cancellation, fixed safe feedback, hostile marker exclusion,
+singleton installation, teardown isolation, bounded repeated presentation,
+and unchanged uncanceled exception propagation. The jsdom tests do not execute
+a real Axios response through the browser transport, so actual iframe/modal
+suppression during a live non-Inertia network response remains a browser
+acceptance prerequisite. Existing React login tests cover normal validation and
+successful callback paths separately.
+
+### Laravel response-contract matrix
+
+| Case | Current evidence | Frontend boundary effect | Required Laravel change |
+|---|---|---|---|
+| Validation rejection | `LoginRequest` throws `ValidationException` with `email` messages; controller uses Inertia POST route. | Normal Inertia page-error path remains unchanged; no global alert. | None identified for this boundary; feature verification remains unrun. |
+| Throttled login | `ensureIsNotRateLimited()` throws translated `auth.throttle` validation message. | Normal scoped validation remains unchanged. | None authorized or identified. |
+| Unauthenticated/session expiry | Auth middleware/routes are source-inspected; live response not exercised. | If returned as valid Inertia page, normal navigation applies; if non-Inertia, safe alert suppresses raw display. | Determine server contract with Laravel feature tests; do not assume normalization. |
+| CSRF mismatch | Middleware/exception response is not exercised in this pass. | Non-Inertia HTML is replaced by the safe alert; exception propagation is untouched. | Separate Laravel response-format decision and feature tests. |
+| Forbidden access | Role middleware is present in application wiring; live response not exercised. | Same conditional behavior: valid Inertia response follows normal path; non-Inertia response gets safe alert. | Verify intended Inertia/redirect contract with server tests. |
+| Unexpected server error | `bootstrap/app.php` normalizes only API/`expectsJson()` exceptions; web/Inertia behavior is not proven. | Global `exception` remains uncanceled; `invalid` raw display is suppressed. | Separate Laravel exception-rendering authorization if web normalization is desired. |
+| External-location response | Inertia source-inspected `409` plus `X-Inertia-Location` uses location visit rather than `invalid`. | Boundary does not intercept or redirect this path. | None for this frontend boundary; browser verification remains required. |
+| Successful login redirect | Controller returns role-based Laravel redirect; source inspected, not browser-tested. | Normal Inertia successful navigation and callback behavior remain unchanged. | Existing server contract needs Laravel/browser acceptance only. |
+
+This boundary is not operation attribution, does not identify a login owner,
+and does not solve exception disclosure or network-failure attribution.
+Exception handling remains unchanged pending separate approval.
+
+**URLM login remains disabled by default. No Laravel, dependency, accepted-core,
+database, deployment, commit, or push change was made.**
